@@ -17,6 +17,7 @@ app.config['CONFIGS_DATABASE'] = os.path.join(app.root_path, 'configs.db')
 app.config['SECRET_KEY'] = 'SECRET'
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.app_context()
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -24,46 +25,24 @@ login_manager.login_message = "Please log in to access this page."
 login_manager.login_message_category = "info"
 
 def create_db():
-    """Helper function to create main and configs database tables."""
+    """Helper function to create main database tables."""
     db = connect_db(app.config['DATABASE'])
     try:
         with app.open_resource('sq_db.sql', mode='r') as f:
             db.cursor().executescript(f.read())
         db.commit()
-        db.close()
+    except sqlite3.Error as e:
+        print(f"Error creating main database tables: {e}")
     finally:
-        try:
-            # Set up configs database for storing uploaded files and repositories
-            configs_db = connect_db(app.config['CONFIGS_DATABASE'])
-            configs_db.execute("""
-            CREATE TABLE IF NOT EXISTS uploads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                repository_id INTEGER,
-                filename TEXT,
-                filepath TEXT,
-                upload_time TIMESTAMP,
-                description TEXT
-            )
-            """)
-        # configs_db.commit()
-        # configs_db.close()
+        db.close()
 
-        finally:
-            configs_db.execute("""
-            CREATE TABLE IF NOT EXISTS repositories (
-                repository_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                name TEXT,
-                description_file TEXT,
-                created_time TIMESTAMP,
-                UNIQUE(user_id, name)
-            )
-            """)
-            configs_db.commit()
-            configs_db.close()
 # user_id, repository_id, filename, filepath, upload_time
+def get_db():
+    if not hasattr(g, 'link_db'):
+        g.link_db = connect_db(app.config['DATABASE'])
+    return g.link_db
 
+# db = get_db()
 
 def connect_db(db_path):
     conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -75,10 +54,10 @@ def get_db():
         g.link_db = connect_db(app.config['DATABASE'])
     return g.link_db
 
-def get_configs_db():
-    if not hasattr(g, 'configs_db'):
-        g.configs_db = connect_db(app.config['CONFIGS_DATABASE'])
-    return g.configs_db
+# def get_db():
+#     if not hasattr(g, 'db'):
+#         g.db = connect_db(app.config['CONFIGS_DATABASE'])
+#     return g.db
 
 class FDataBase:
     def __init__(self, db):
@@ -138,7 +117,7 @@ def load_user(user_id):
 @app.before_request
 def before_request():
     g.db = get_db()
-    g.configs_db = get_configs_db()
+    g.db = get_db()
 
     
 @app.template_filter('datetimeformat')
@@ -146,8 +125,8 @@ def datetimeformat(value, format='%Y-%m-%d %H:%M'):
     return datetime.fromtimestamp(value).strftime(format)
 
 def repo_name_from_file(file):
-    configs_db = get_configs_db()
-    repo = configs_db.execute("""
+    db = get_db()
+    repo = db.execute("""
         SELECT r.name, u.name as author
         FROM repositories r
         JOIN users u ON r.user_id = u.id
@@ -215,12 +194,12 @@ def profile():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
 
-            configs_db = get_configs_db()
-            configs_db.execute("""
+            db = get_db()
+            db.execute("""
             INSERT INTO uploads (user_id, filename, filepath, upload_time)
             VALUES (?, ?, ?, ?)
             """, (current_user.get_id(), filename, filepath, int(time.time())))
-            configs_db.commit()
+            db.commit()
             flash("File uploaded successfully", "success")
         else:
             flash("No file selected", "error")
@@ -239,8 +218,8 @@ def create_repo():
             return redirect(url_for('create_repo'))
 
         # Check if repository name already exists for the user
-        configs_db = get_configs_db()
-        existing_repo = configs_db.execute("""
+        db = get_db()
+        existing_repo = db.execute("""
             SELECT * FROM repositories WHERE user_id = ? AND name = ?
         """, (current_user.get_id(), repo_name)).fetchone()
 
@@ -258,14 +237,14 @@ def create_repo():
             desc_file.write(description or "")
 
         # Save repository information to the database
-        configs_db.execute("""
+        db.execute("""
             INSERT INTO repositories (user_id, name, description_file, created_time)
             VALUES (?, ?, ?, ?)
         """, (current_user.get_id(), repo_name, description_file_path, int(time.time())))
-        configs_db.commit()
+        db.commit()
 
         # Get repository ID
-        repo_id = configs_db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        repo_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         # Handle uploaded files
         files = request.files.getlist('files')
@@ -276,11 +255,11 @@ def create_repo():
                 file.save(filepath)
 
                 # Insert file info into uploads table
-                configs_db.execute("""
+                db.execute("""
                     INSERT INTO uploads (user_id, repository_id, filename, filepath, upload_time)
                     VALUES (?, ?, ?, ?, ?)
                 """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
-        configs_db.commit()
+        db.commit()
 
         flash("Repository created successfully with uploaded files and description.", "success")
         return redirect(url_for('view_repositories'))
@@ -307,8 +286,8 @@ def view_repository(author, repo_name):
         return redirect(url_for('view_repositories'))
 
     # Fetch the repository for this user
-    configs_db = get_configs_db()
-    repo = configs_db.execute("""
+    db = get_db()
+    repo = db.execute("""
         SELECT * FROM repositories WHERE user_id = ? AND name = ?
     """, (user['id'], repo_name)).fetchone()
 
@@ -318,9 +297,9 @@ def view_repository(author, repo_name):
         return redirect(url_for('view_repositories'))
 
     # **Permission Check**: Ensure current user is the owner
-    # if repo['user_id'] != current_user.get_id():
-    #     flash("You do not have permission to access this repository.", "error")
-    #     return redirect(url_for('view_repositories'))
+    if int(repo['user_id']) != int(current_user.get_id()):
+        flash("You do not have permission to access this repository.", "error")
+        return redirect(url_for('view_repositories'))
 
     # Handle updates (adding files or updating description)
     if request.method == "POST":
@@ -336,14 +315,14 @@ def view_repository(author, repo_name):
                     if True:
                         file.save(filepath)
                         # Insert file info into uploads table
-                        configs_db.execute("""
+                        db.execute("""
                             INSERT INTO uploads (user_id, repository_id, filename, filepath, upload_time)
                             VALUES (?, ?, ?, ?, ?)
                         """, (current_user.get_id(), repo['repository_id'], filename, filepath, int(time.time())))
                         print(f"File uploaded: {filename}")
                     else:
                         flash(f"File {filename} has an invalid extension and was not uploaded.", "error")
-            configs_db.commit()
+            db.commit()
             flash("Files added successfully.", "success")
 
         elif action == "update_description":
@@ -357,7 +336,7 @@ def view_repository(author, repo_name):
         return redirect(url_for('view_repository', author=author, repo_name=repo_name))
 
     # Fetch all files in the repository
-    files = configs_db.execute("""
+    files = db.execute("""
         SELECT * FROM uploads WHERE repository_id = ?
     """, (repo['repository_id'],)).fetchall()
 
@@ -372,49 +351,70 @@ def view_repository(author, repo_name):
 
 
 
-
-
 @app.route('/delete_file/<int:file_id>', methods=["POST", "GET"])
 @login_required
 def delete_file(file_id):
-    configs_db = get_configs_db()
-    cur = configs_db.cursor()
-    cur.execute("SELECT * FROM uploads WHERE id = ? AND user_id = ?", (file_id, current_user.get_id()))
-    file = cur.fetchone()
+    db = get_db()
+    dbase = FDataBase(db)
+    current_user_id = int(current_user.get_id())
+
+    # Correctly execute the query and fetch the result using the returned cursor
+    cursor = db.execute("SELECT * FROM uploads WHERE id = ? AND user_id = ?", (file_id, current_user_id))
+    file = cursor.fetchone()
 
     if not file:
         flash("File not found or you don't have permission to delete it.", "error")
         return redirect(url_for('view_uploads'))
 
-    # Get repository details for redirection
-    repo = configs_db.execute("""
-        SELECT r.name, u.name as author
-        FROM repositories r
-        JOIN users u ON r.user_id = u.id
-        WHERE r.repository_id = ?
-    """, (file['repository_id'],)).fetchone()
+    # Fetch repository details using the correct repository_id
+    repo_id = file['repository_id']
+    cursor = db.execute("SELECT name, user_id FROM repositories WHERE repository_id = ?", (repo_id,))
+    repo = cursor.fetchone()
 
     if not repo:
         flash("Repository not found.", "error")
         return redirect(url_for('view_uploads'))
 
+    # Fetch author name
+    cursor = db.execute("SELECT name FROM users WHERE id = ?", (repo['user_id'],))
+    author = cursor.fetchone()
+
+    if not author:
+        flash("Author not found.", "error")
+        return redirect(url_for('view_uploads'))
+
+    author_name = author['name']
+    repo_name = repo['name']
+
     # Delete the file from the filesystem
-    if os.path.exists(file['filepath']):
-        os.remove(file['filepath'])
+    try:
+        if os.path.exists(file['filepath']):
+            os.remove(file['filepath'])
+        else:
+            flash("File not found on the server.", "warning")
+    except Exception as e:
+        flash(f"Error deleting file from filesystem: {e}", "error")
+        return redirect(url_for('view_repository', author=author_name, repo_name=repo_name))
 
     # Delete the record from the database
-    configs_db.execute("DELETE FROM uploads WHERE id = ?", (file_id,))
-    configs_db.commit()
+    try:
+        db.execute("DELETE FROM uploads WHERE id = ?", (file_id,))
+        db.commit()
+    except sqlite3.Error as e:
+        flash(f"Error deleting file from database: {e}", "error")
+        return redirect(url_for('view_repository', author=author_name, repo_name=repo_name))
 
     flash("File deleted successfully.", "success")
-    return redirect(url_for('view_repository', author=repo['author'], repo_name=repo['name']))
+    return redirect(url_for('view_repository', author=author_name, repo_name=repo_name))
+
+
 
 
 @app.route('/view_repositories')
 @login_required
 def view_repositories():
-    configs_db = get_configs_db()
-    cur = configs_db.cursor()
+    db = get_db()
+    cur = db.cursor()
 
     # Fetch all repositories for the current user
     cur.execute("SELECT * FROM repositories WHERE user_id = ?", (current_user.get_id(),))
@@ -448,8 +448,8 @@ def view_repositories():
 @app.route('/uploads')
 @login_required
 def view_uploads():
-    configs_db = get_configs_db()
-    cur = configs_db.cursor()
+    db = get_db()
+    cur = db.cursor()
     cur.execute("SELECT id, user_id, filename, filepath, upload_time FROM uploads")
     files = cur.fetchall()
 
@@ -458,18 +458,19 @@ def view_uploads():
 @app.route('/download/<int:file_id>')
 @login_required
 def download_file(file_id):
-    configs_db = get_configs_db()
-    cur = configs_db.cursor()
-    cur.execute("SELECT filename, filepath, repository_id FROM uploads WHERE id = ?", (file_id,))
-    file = cur.fetchone()
+    db = get_db()
+    cursor = db.execute("SELECT filename, filepath, repository_id FROM uploads WHERE id = ?", (file_id,))
+    file = cursor.fetchone()
 
     if file and file['filepath']:
-        # Verify that the current user owns the repository containing the file
-        repo = configs_db.execute("""
+        # Fetch the repository's user_id for permission check
+        repo_cursor = db.execute("""
             SELECT user_id FROM repositories WHERE repository_id = ?
-        """, (file['repository_id'],)).fetchone()
+        """, (file['repository_id'],))
+        repo = repo_cursor.fetchone()
 
-        if repo and repo['user_id'] == current_user.get_id():
+        # Check if the current user is the owner of the repository
+        if repo and int(repo['user_id']) == int(current_user.get_id()):
             if os.path.exists(file['filepath']):
                 return send_file(file['filepath'], as_attachment=True, download_name=file['filename'])
             else:
@@ -483,11 +484,12 @@ def download_file(file_id):
 
 
 
+
 @app.route('/download_description/<int:repo_id>')
 @login_required
 def download_description(repo_id):
-    configs_db = get_configs_db()
-    cur = configs_db.cursor()
+    db = get_db()
+    cur = db.cursor()
     cur.execute("SELECT description_file FROM repositories WHERE repository_id = ?", (repo_id,))
     repo = cur.fetchone()
 
