@@ -8,6 +8,8 @@ from werkzeug.utils import secure_filename
 from UserLogin import UserLogin
 import time
 from datetime import datetime
+from flask import jsonify
+
 
 
 
@@ -443,53 +445,50 @@ def view_repositories():
     # Pass repositories and their corresponding files to the template
     return render_template("view_repositories.html", repositories=repositories, files_by_repo=files_by_repo)
 
-@app.route('/all_repositories')
+@app.route('/all_repositories', methods=["GET"])
 @login_required
 def all_repositories():
     db = get_db()
     cursor = db.cursor()
 
-    # Fetch all repositories along with author information and description file path
-    cursor.execute("""
+    # Get search query from the request
+    search_query = request.args.get('search', '').strip()
+
+    # SQL query with search condition
+    query = """
         SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description_file, u.name AS author_name
         FROM repositories r
         JOIN users u ON r.user_id = u.id
         ORDER BY r.created_time DESC
-    """)
+    """
+    cursor.execute(query)
     repositories = cursor.fetchall()
 
-    # Add description content for each repository
+    # Process descriptions and filter based on search query
     repos_with_descriptions = []
     for repo in repositories:
-        # Read the description from the file if it exists
+        # Read description from file if it exists
         description = ""
         if repo['description_file'] and os.path.exists(repo['description_file']):
             with open(repo['description_file'], 'r') as desc_file:
                 description = desc_file.read()
 
-        # Append each repository with description to the list
-        repos_with_descriptions.append({
-            'repo_name': repo['repo_name'],
-            'created_time': repo['created_time'],
-            'author_name': repo['author_name'],
-            'description': description[:200]
-        })
+        # Filter results based on search query if provided
+        if not search_query or search_query.lower() in description.lower():
+            repos_with_descriptions.append({
+                'repo_name': repo['repo_name'],
+                'created_time': repo['created_time'],
+                'author_name': repo['author_name'],
+                'description': description[:200]
+            })
 
-    return render_template("all_repositories.html", repositories=repos_with_descriptions)
+    # Check if the request is an AJAX request
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(repositories=repos_with_descriptions)
+    
+    # For normal requests, render the template
+    return render_template("all_repositories.html", repositories=repos_with_descriptions, search_query=search_query)
 
-
-
-
-
-@app.route('/uploads')
-@login_required
-def view_uploads():
-    db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT id, user_id, filename, filepath, upload_time FROM uploads")
-    files = cur.fetchall()
-
-    return render_template("uploads.html", files=files)
 
 @app.route('/download/<int:file_id>')
 @login_required

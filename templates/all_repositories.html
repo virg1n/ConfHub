@@ -17,17 +17,60 @@
         th {
             font-weight: bold;
         }
-        /* Description cell styling for word wrap and line breaks */
         .description-cell {
-            white-space: pre-wrap; /* Keeps line breaks in description text */
-            word-wrap: break-word; /* Breaks long words */
-            max-width: 300px; /* Adjust the width as needed */
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 300px;
             overflow: hidden;
         }
     </style>
+    <script>
+        // JavaScript to handle real-time search
+        function searchRepositories() {
+            const searchQuery = document.getElementById('search').value;
+
+            // Send AJAX request to the server with the search query
+            fetch(`/all_repositories?search=${encodeURIComponent(searchQuery)}`, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'  // Indicate AJAX request
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Update the table with the filtered repositories
+                const tableBody = document.getElementById('repositoriesTableBody');
+                tableBody.innerHTML = '';  // Clear the table
+
+                data.repositories.forEach(repo => {
+                    const row = document.createElement('tr');
+
+                    row.innerHTML = `
+                        <td>${repo.repo_name}</td>
+                        <td>${repo.author_name}</td>
+                        <td>${new Date(repo.created_time * 1000).toLocaleString()}</td>
+                        <td class="description-cell">${repo.description}</td>
+                        <td><a href="/repo/${repo.author_name}/${repo.repo_name}">View Repository</a></td>
+                    `;
+
+                    tableBody.appendChild(row);
+                });
+            })
+            .catch(error => console.error('Error fetching repositories:', error));
+        }
+
+        // Add event listener to search input for real-time search
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById('search').addEventListener('input', searchRepositories);
+        });
+    </script>
 </head>
 <body>
     <h1>All Repositories</h1>
+
+    <!-- Search Form (without a submit button) -->
+    <input type="text" id="search" placeholder="Search by description" value="{{ search_query }}">
+
     <table>
         <thead>
             <tr>
@@ -38,7 +81,7 @@
                 <th>View</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="repositoriesTableBody">
             {% for repo in repositories %}
                 <tr>
                     <td>{{ repo['repo_name'] }}</td>
