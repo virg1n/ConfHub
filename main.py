@@ -410,6 +410,7 @@ def delete_file(file_id):
 
 
 
+
 @app.route('/view_repositories')
 @login_required
 def view_repositories():
@@ -441,6 +442,41 @@ def view_repositories():
 
     # Pass repositories and their corresponding files to the template
     return render_template("view_repositories.html", repositories=repositories, files_by_repo=files_by_repo)
+
+@app.route('/all_repositories')
+@login_required
+def all_repositories():
+    db = get_db()
+    cursor = db.cursor()
+
+    # Fetch all repositories along with author information and description file path
+    cursor.execute("""
+        SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description_file, u.name AS author_name
+        FROM repositories r
+        JOIN users u ON r.user_id = u.id
+        ORDER BY r.created_time DESC
+    """)
+    repositories = cursor.fetchall()
+
+    # Add description content for each repository
+    repos_with_descriptions = []
+    for repo in repositories:
+        # Read the description from the file if it exists
+        description = ""
+        if repo['description_file'] and os.path.exists(repo['description_file']):
+            with open(repo['description_file'], 'r') as desc_file:
+                description = desc_file.read()
+
+        # Append each repository with description to the list
+        repos_with_descriptions.append({
+            'repo_name': repo['repo_name'],
+            'created_time': repo['created_time'],
+            'author_name': repo['author_name'],
+            'description': description[:200]
+        })
+
+    return render_template("all_repositories.html", repositories=repos_with_descriptions)
+
 
 
 

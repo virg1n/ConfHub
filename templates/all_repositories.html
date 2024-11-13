@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>All Repositories</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            vertical-align: top;
+            text-align: left;
+        }
+        th {
+            font-weight: bold;
+        }
+        /* Description cell styling for word wrap and line breaks */
+        .description-cell {
+            white-space: pre-wrap; /* Keeps line breaks in description text */
+            word-wrap: break-word; /* Breaks long words */
+            max-width: 300px; /* Adjust the width as needed */
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <h1>All Repositories</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Repository Name</th>
+                <th>Author</th>
+                <th>Created Date</th>
+                <th>Description</th>
+                <th>View</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for repo in repositories %}
+                <tr>
+                    <td>{{ repo['repo_name'] }}</td>
+                    <td>{{ repo['author_name'] }}</td>
+                    <td>{{ repo['created_time'] | datetimeformat }}</td>
+                    <td class="description-cell">{{ repo['description'] }}</td>
+                    <td><a href="{{ url_for('view_repository', author=repo['author_name'], repo_name=repo['repo_name']) }}">View Repository</a></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
