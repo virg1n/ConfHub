@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Your Repositories</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <h1>Your Repositories</h1>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+          {% for category, message in messages %}
+            <li class="{{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+    <a href="{{ url_for('create_repo') }}">Create New Repository</a>
+    <ul>
+        {% for repo in repositories %}
+            <li>
+                <a href="{{ url_for('view_repository', author=current_user.name, repo_name=repo.name) }}">
+                    {{ repo.name }}
+                </a>
+                - Created on {{ repo.created_time | datetimeformat }}
+            </li>
+        {% else %}
+            <li>No repositories found.</li>
+        {% endfor %}
+    </ul>
+    <br>
+    <a href="{{ url_for('logout') }}">Logout</a>
+</body>
+</html>
