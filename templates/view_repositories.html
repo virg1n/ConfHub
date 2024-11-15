@@ -1,36 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Your Repositories</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-</head>
-<body>
-    <h1>Your Repositories</h1>
-    <!-- {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <ul class="flashes">
-          {% for category, message in messages %}
-            <li class="{{ category }}">{{ message }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %} -->
-    <a href="{{ url_for('create_repo') }}">Create New Repository</a>
-    <ul>
+<!-- templates/view_repositories.html -->
+{% extends "base.html" %}
+
+{% block title %}Your Repositories - Open..{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Your Repositories</h2>
+    <a href="{{ url_for('create_repo') }}" class="btn btn-success">Create New Repository</a>
+</div>
+
+{% if repositories %}
+    <div class="list-group">
         {% for repo in repositories %}
-            <li>
-                <a href="{{ url_for('view_repository', author=current_user.name, repo_name=repo.name) }}">
-                    {{ repo.name }}
-                </a>
-                - Created on {{ repo.created_time | datetimeformat }}
-            </li>
-        {% else %}
-            <li>No repositories found.</li>
+            <a href="{{ url_for('view_repository', author=current_user.name, repo_name=repo.name) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-1">{{ repo.name }}</h5>
+                    <small>Created on {{ repo.created_time | datetimeformat }}</small>
+                </div>
+                <span class="badge bg-primary rounded-pill">View</span>
+            </a>
         {% endfor %}
-    </ul>
-    <br>
-    <a href="{{ url_for('logout') }}">Logout</a>
-    <a href="{{ url_for('all_repositories') }}">All Repositories</a>
-</body>
-</html>
+    </div>
+{% else %}
+    <div class="alert alert-info" role="alert">
+        You have no repositories yet. <a href="{{ url_for('create_repo') }}" class="alert-link">Create one now!</a>
+    </div>
+{% endif %}
+
+<div class="mt-4">
+    <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+    <a href="{{ url_for('all_repositories') }}" class="btn btn-secondary">All Repositories</a>
+</div>
+{% endblock %}

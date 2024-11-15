@@ -1,99 +1,101 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>All Repositories</title>
-    <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 10px;
-            border: 1px solid #ddd;
-            vertical-align: top;
-            text-align: left;
-        }
-        th {
-            font-weight: bold;
-        }
-        .description-cell {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            max-width: 300px;
-            overflow: hidden;
-        }
-    </style>
-    <script>
-        // JavaScript to handle real-time search
-        function searchRepositories() {
-            const searchQuery = document.getElementById('search').value;
+<!-- templates/all_repositories.html -->
+{% extends "base.html" %}
 
-            // Send AJAX request to the server with the search query
-            fetch(`/all_repositories?search=${encodeURIComponent(searchQuery)}`, {
-                method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'  // Indicate AJAX request
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Update the table with the filtered repositories
-                const tableBody = document.getElementById('repositoriesTableBody');
-                tableBody.innerHTML = '';  // Clear the table
+{% block title %}All Repositories - Open..{% endblock %}
 
-                data.repositories.forEach(repo => {
-                    const row = document.createElement('tr');
+{% block content %}
+<h2 class="mb-4">All Repositories</h2>
 
-                    row.innerHTML = `
-                        <td>${repo.repo_name}</td>
-                        <td>${repo.author_name}</td>
-                        <td>${new Date(repo.created_time * 1000).toLocaleString()}</td>
-                        <td class="description-cell">${repo.description}</td>
-                        <td><a href="/repo/${repo.author_name}/${repo.repo_name}">View Repository</a></td>
-                    `;
+<!-- Search Form -->
+<div class="mb-4">
+    <input type="text" id="search" class="form-control" placeholder="Search by description, name, or author" value="{{ search_query }}">
+</div>
 
-                    tableBody.appendChild(row);
-                });
-            })
-            .catch(error => console.error('Error fetching repositories:', error));
-        }
-
-        // Add event listener to search input for real-time search
-        document.addEventListener("DOMContentLoaded", () => {
-            document.getElementById('search').addEventListener('input', searchRepositories);
-        });
-    </script>
-</head>
-<body>
-    <h1>All Repositories</h1>
-
-    <!-- Search Form (without a submit button) -->
-    <input type="text" id="search" placeholder="Search by description" value="{{ search_query }}">
-
-    <table>
-        <thead>
+<!-- Repositories Table -->
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="table-dark">
             <tr>
-                <th>Repository Name</th>
-                <th>Author</th>
-                <th>Created Date</th>
-                <th>Description</th>
-                <th>View</th>
+                <th scope="col">Repository Name</th>
+                <th scope="col">Author</th>
+                <th scope="col">Created Date</th>
+                <th scope="col">Description</th>
+                <th scope="col">View</th>
             </tr>
         </thead>
         <tbody id="repositoriesTableBody">
             {% for repo in repositories %}
                 <tr>
-                    <td>{{ repo['repo_name'] }}</td>
-                    <td>{{ repo['author_name'] }}</td>
-                    <td>{{ repo['created_time'] | datetimeformat }}</td>
-                    <td class="description-cell">{{ repo['description'] }}</td>
-                    <td><a href="{{ url_for('view_repository', author=repo['author_name'], repo_name=repo['repo_name']) }}">View Repository</a></td>
+                    <td>{{ repo.repo_name }}</td>
+                    <td>{{ repo.author_name }}</td>
+                    <td>{{ repo.created_time | datetimeformat }}</td>
+                    <td class="description-cell">{{ repo.description }}</td>
+                    <td><a href="{{ url_for('view_repository', author=repo.author_name, repo_name=repo.repo_name) }}" class="btn btn-primary btn-sm">View</a></td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="5" class="text-center">No repositories found.</td>
                 </tr>
             {% endfor %}
         </tbody>
     </table>
-    <a href="{{ url_for('create_repo') }}">Create Repository</a>
-    <a href="{{ url_for('view_repositories') }}">My Repositories</a>
-</body>
-</html>
+</div>
+
+<!-- Pagination (Optional) -->
+<!-- You can implement pagination here if you have many repositories -->
+
+<div class="mt-4">
+    <a href="{{ url_for('create_repo') }}" class="btn btn-success">Create Repository</a>
+    <a href="{{ url_for('view_repositories') }}" class="btn btn-info">My Repositories</a>
+    <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// JavaScript to handle real-time search using Fetch API
+function searchRepositories() {
+    const searchQuery = document.getElementById('search').value;
+
+    // Send AJAX request to the server with the search query
+    fetch(`/all_repositories?search=${encodeURIComponent(searchQuery)}`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'  // Indicate AJAX request
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Update the table with the filtered repositories
+        const tableBody = document.getElementById('repositoriesTableBody');
+        tableBody.innerHTML = '';  // Clear the table
+
+        if (data.repositories.length > 0) {
+            data.repositories.forEach(repo => {
+                const row = document.createElement('tr');
+
+                row.innerHTML = `
+                    <td>${repo.repo_name}</td>
+                    <td>${repo.author_name}</td>
+                    <td>${new Date(repo.created_time * 1000).toLocaleString()}</td>
+                    <td class="description-cell">${repo.description}</td>
+                    <td><a href="/repo/${encodeURIComponent(repo.author_name)}/${encodeURIComponent(repo.repo_name)}" class="btn btn-primary btn-sm">View</a></td>
+                `;
+
+                tableBody.appendChild(row);
+            });
+        } else {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td colspan="5" class="text-center">No repositories found.</td>`;
+            tableBody.appendChild(row);
+        }
+    })
+    .catch(error => console.error('Error fetching repositories:', error));
+}
+
+// Add event listener to search input for real-time search
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById('search').addEventListener('input', searchRepositories);
+});
+</script>
+{% endblock %}

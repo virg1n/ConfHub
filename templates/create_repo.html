@@ -1,47 +1,61 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Create Repository</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-</head>
-<body>
-    <h1>Create a New Repository</h1>
-    <!-- {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <ul class="flashes">
-          {% for category, message in messages %}
-            <li class="{{ category }}">{{ message }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %} -->
-    <h1>Create Repository</h1>
-    <form method="POST" enctype="multipart/form-data">
-      <label for="repo_name">Repository Name:</label>
-      <input type="text" id="repo_name" name="repo_name" required><br><br>
+<!-- templates/create_repo.html -->
+{% extends "base.html" %}
 
-      <label for="description">Description:</label><br>
-      <textarea id="description" name="description" rows="5" cols="50">{{ description }}</textarea><br><br>
+{% block title %}Create Repository - MyGitClone{% endblock %}
 
-      <label for="is_open">Open Repository:</label>
-      <input type="checkbox" id="is_open" name="is_open" checked><br><br>
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Create New Repository</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <!-- Repository Name -->
+            <div class="mb-3">
+                <label for="repo_name" class="form-label">Repository Name</label>
+                <input type="text" class="form-control" id="repo_name" name="repo_name" required>
+            </div>
 
-      <label for="diagram">Upload Diagram:</label>
-      <input type="file" id="diagram" name="diagram"><br><br>
+            <!-- Description -->
+            <div class="mb-3">
+                <label for="description" class="form-label">Description</label>
+                <textarea class="form-control" id="description" name="description" rows="4" placeholder="Enter repository description..."></textarea>
+            </div>
 
-      <label for="files">Upload Files:</label>
-      <input type="file" id="files" name="files" multiple><br><br>
+            <!-- Use AI for Description -->
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" value="on" id="use_ai" name="use_ai">
+                <label class="form-check-label" for="use_ai">
+                    Generate Description Using AI
+                </label>
+            </div>
 
-      <div>
-        <label for="use_ai">Generate Description Using AI:</label>
-        <input type="checkbox" id="use_ai" name="use_ai">
-      </div>  
+            <!-- Files Upload -->
+            <div class="mb-3">
+                <label for="files" class="form-label">Upload Files</label>
+                <input class="form-control" type="file" id="files" name="files" multiple required>
+            </div>
 
-      <button type="submit">Create Repository</button>
-  </form>
-    <br>
-    <a href="{{ url_for('view_repositories') }}">My Repositories</a>
-    <a href="{{ url_for('all_repositories') }}">All Repositories</a>
-</body>
-</html>
+            <!-- Diagram Upload -->
+            <div class="mb-3">
+                <label for="diagram" class="form-label">Upload Diagram (Optional)</label>
+                <input class="form-control" type="file" id="diagram" name="diagram">
+            </div>
+
+            <!-- Repository Visibility -->
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" value="on" id="is_open" name="is_open" checked>
+                <label class="form-check-label" for="is_open">
+                    Make Repository Public
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Create Repository</button>
+        </form>
+    </div>
+</div>
+
+<div class="mt-4">
+    <a href="{{ url_for('view_repositories') }}" class="btn btn-secondary">Back to Repositories</a>
+</div>
+{% endblock %}
