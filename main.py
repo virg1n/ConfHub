@@ -15,16 +15,14 @@ from openai import OpenAI
 load_dotenv()
 
 client = OpenAI(
-    # This is the default and can be omitted
     api_key=os.environ.get("API_KEY")
-
 )
 
 ALLOWED_EXTENSIONS = {'.py', '.java', '.cpp', '.js', '.html', '.css', '.doc'}
 
 app = Flask(__name__)
 app.config['DATABASE'] = os.path.join(app.root_path, 'flsite.db')
-app.config['CONFIGS_DATABASE'] = os.path.join(app.root_path, 'configs.db')
+# app.config['CONFIGS_DATABASE'] = os.path.join(app.root_path, 'configs.db')
 app.config['SECRET_KEY'] = 'SECRET'
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'uploads')
 app.config['DIAGRAM_FOLDER'] = os.path.join(app.root_path, 'diagrams')
@@ -272,7 +270,7 @@ def profile():
             flash("No file selected", "error")
 
     return render_template("profile.html")
-    
+ 
 @app.route('/create_repo', methods=["GET", "POST"])
 @login_required
 def create_repo():
@@ -280,8 +278,8 @@ def create_repo():
         repo_name = request.form.get('repo_name').strip()
         description = request.form.get('description', '').strip()
         is_open = request.form.get('is_open') == 'on'  # Checkbox for open/closed
-        diagram = request.files.get('diagram')  # Diagram upload
-
+        use_ai = request.form.get('use_ai') == 'on'    # Checkbox for AI description
+        diagram = request.files.get('diagram')        # Diagram upload
 
         if not repo_name:
             flash("Repository name is required.", "error")
@@ -308,62 +306,102 @@ def create_repo():
             diagram_path = os.path.join(app.config['DIAGRAM_FOLDER'], diagram_filename)
             diagram.save(diagram_path)
 
-        # Save repository information to the database
-        db.execute("""
-            INSERT INTO repositories (user_id, name, description, created_time, is_open, diagram)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            current_user.get_id(),
-            repo_name,
-            description,  # Store description directly in DB
-            int(time.time()),
-            int(is_open),
-            diagram_path
-        ))
-        db.commit()
+        # Placeholder for description; will be updated if AI is used
+        final_description = description
+        is_description_ai_generated = 0
 
-        # Get repository ID
-        repo_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        if use_ai:
+            # Temporarily insert the repository without description to get repo_id
+            db.execute("""
+                INSERT INTO repositories (user_id, name, description, created_time, is_open, diagram, is_description_ai_generated)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                current_user.get_id(),
+                repo_name,
+                "",  # Temporary description
+                int(time.time()),
+                int(is_open),
+                diagram_path,
+                1  # Indicate that description will be AI-generated
+            ))
+            db.commit()
 
-        file_contents = read_repository_files(repo_dir)
-        new_description = generate_description(file_contents, description)
-        print("--------------------------------------------------------------------------------")
-        print(file_contents)
-        print("--------------------------------------------------------------------------------")
-        # Handle uploaded files
-        files = request.files.getlist('files')
-        for file in files:
-            if file and file.filename:
-                if not allowed_file(file.filename):
-                    flash(f"File '{file.filename}' is not an allowed file type.", "error")
-                    continue
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(repo_dir, filename)
-                file.save(filepath)
+            # Get repository ID
+            repo_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-                # Insert file info into uploads table
-                db.execute("""
-                    INSERT INTO uploads (user_id, repository_id, filename, filepath, upload_time)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
-        db.commit()
+            # Handle uploaded files
+            files = request.files.getlist('files')
+            for file in files:
+                if file and file.filename:
+                    if not allowed_file(file.filename):
+                        flash(f"File '{file.filename}' is not an allowed file type.", "error")
+                        continue
+                    filename = secure_filename(file.filename)
+                    filepath = os.path.join(repo_dir, filename)
+                    file.save(filepath)
 
-        file_contents = read_repository_files(repo_dir)
-        if file_contents:
-            new_description = generate_description(file_contents, description)
-            if new_description:
-                # Update the repository's description in the database
-                db.execute("""
-                    UPDATE repositories SET description = ? WHERE repository_id = ?
-                """, (new_description, repo_id))
-                db.commit()
-                flash("Repository created and description generated successfully.", "success")
+                    # Insert file info into uploads table
+                    db.execute("""
+                        INSERT INTO uploads (user_id, repository_id, filename, filepath, upload_time)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
+            db.commit()
+
+            # Read repository files and generate new description
+            file_contents = read_repository_files(repo_dir)
+            if file_contents:
+                new_description = generate_description(file_contents, description)
+                if new_description:
+                    # Update the repository's description in the database
+                    db.execute("""
+                        UPDATE repositories SET description = ? WHERE repository_id = ?
+                    """, (new_description, repo_id))
+                    db.commit()
+                    final_description = new_description
+                    flash("Repository created and description generated successfully.", "success")
+                else:
+                    flash("Repository created but failed to generate description.", "warning")
             else:
-                flash("Repository created but failed to generate description.", "warning")
+                flash("Repository created but no files to generate description.", "warning")
         else:
-            flash("Repository created but no files to generate description.", "warning")
+            # Insert repository with user-provided description
+            db.execute("""
+                INSERT INTO repositories (user_id, name, description, created_time, is_open, diagram, is_description_ai_generated)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                current_user.get_id(),
+                repo_name,
+                description,
+                int(time.time()),
+                int(is_open),
+                diagram_path,
+                0  # Indicate that description is user-provided
+            ))
+            db.commit()
 
-        flash("Repository created successfully with uploaded files, description, and diagram.", "success")
+            # Get repository ID
+            repo_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # Handle uploaded files
+            files = request.files.getlist('files')
+            for file in files:
+                if file and file.filename:
+                    if not allowed_file(file.filename):
+                        flash(f"File '{file.filename}' is not an allowed file type.", "error")
+                        continue
+                    filename = secure_filename(file.filename)
+                    filepath = os.path.join(repo_dir, filename)
+                    file.save(filepath)
+
+                    # Insert file info into uploads table
+                    db.execute("""
+                        INSERT INTO uploads (user_id, repository_id, filename, filepath, upload_time)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
+            db.commit()
+
+            flash("Repository created successfully.", "success")
+
         return redirect(url_for('view_repositories'))
 
     return render_template("create_repo.html")
@@ -397,6 +435,7 @@ def get_diagram(repo_id):
 @login_required
 def debug_current_user():
     return f"Current user name: {current_user.name}"
+
 
 @app.route('/repo/<string:author>/<string:repo_name>', methods=["GET", "POST"])
 @login_required
@@ -444,32 +483,64 @@ def view_repository(author, repo_name):
                         VALUES (?, ?, ?, ?, ?)
                     """, (current_user.get_id(), repo['repository_id'], filename, filepath, int(time.time())))
             db.commit()
-            flash("Files added successfully.", "success")
 
-            file_contents = read_repository_files(repo_dir)
-            current_description = repo['description'] if repo['description'] else ""
-            if file_contents:
-                new_description = generate_description(file_contents, current_description)
-                if new_description:
-                    # Update the repository's description in the database
-                    db.execute("""
-                        UPDATE repositories SET description = ? WHERE repository_id = ?
-                    """, (new_description, repo['repository_id']))
-                    db.commit()
-                    flash("Files added and description updated successfully.", "success")
+            # Regenerate description if AI was previously used or if user opts to
+            regenerate = request.form.get('regenerate_description') == 'on'
+            use_ai = request.form.get('use_ai') == 'on'
+
+            if regenerate or use_ai:
+                file_contents = read_repository_files(repo_dir)
+                current_description = repo['description'] if repo['description'] else ""
+                if file_contents:
+                    new_description = generate_description(file_contents, current_description)
+                    if new_description:
+                        # Update the repository's description in the database
+                        db.execute("""
+                            UPDATE repositories 
+                            SET description = ?, is_description_ai_generated = ?
+                            WHERE repository_id = ?
+                        """, (new_description, 1 if use_ai else repo['is_description_ai_generated'], repo['repository_id']))
+                        db.commit()
+                        flash("Files added and description updated successfully.", "success")
+                    else:
+                        flash("Files added but failed to update description.", "warning")
                 else:
-                    flash("Files added but failed to update description.", "warning")
-            else:
-                flash("Files added but no files to generate description.", "warning")
+                    flash("Files added but no files to generate description.", "warning")
 
+            else:
+                flash("Files added successfully.", "success")
 
         elif action == "update_description":
             new_description = request.form.get('description', '').strip()
-            db.execute("""
-                UPDATE repositories SET description = ? WHERE repository_id = ?
-            """, (new_description, repo['repository_id']))
-            db.commit()
-            flash("Description updated successfully.", "success")
+            use_ai = request.form.get('use_ai') == 'on'  # Checkbox for AI description
+
+            if use_ai:
+                repo_dir = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(repo['name']))
+                file_contents = read_repository_files(repo_dir)
+                if file_contents:
+                    generated_description = generate_description(file_contents, new_description)
+                    if generated_description:
+                        # Update the repository's description in the database
+                        db.execute("""
+                            UPDATE repositories 
+                            SET description = ?, is_description_ai_generated = ?
+                            WHERE repository_id = ?
+                        """, (generated_description, 1, repo['repository_id']))
+                        db.commit()
+                        flash("Description updated using AI.", "success")
+                    else:
+                        flash("Failed to generate description using AI.", "warning")
+                else:
+                    flash("No files to generate description.", "warning")
+            else:
+                # Update with user-provided description
+                db.execute("""
+                    UPDATE repositories 
+                    SET description = ?, is_description_ai_generated = ?
+                    WHERE repository_id = ?
+                """, (new_description, 0, repo['repository_id']))
+                db.commit()
+                flash("Description updated successfully.", "success")
 
         elif action == "update_diagram":
             new_diagram = request.files.get('diagram')

@@ -17,15 +17,16 @@ CREATE TABLE IF NOT EXISTS users (
 -- Create repositories table with 'description' and 'diagram'
 CREATE TABLE IF NOT EXISTS repositories (
     repository_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    name TEXT,
-    description TEXT DEFAULT '',
-    created_time TIMESTAMP,
-    is_open BOOLEAN DEFAULT 1, -- 1 for open, 0 for closed
-    diagram TEXT, -- Path to the diagram image
-    UNIQUE(user_id, name),
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_time INTEGER NOT NULL,
+    is_open INTEGER NOT NULL,
+    diagram TEXT,
+    is_description_ai_generated INTEGER DEFAULT 0,
+    FOREIGN KEY(user_id) REFERENCES users(id)
 );
+
 
 -- Create uploads table
 CREATE TABLE IF NOT EXISTS uploads (
