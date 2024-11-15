@@ -11,13 +11,15 @@ from datetime import datetime
 from flask import jsonify
 
 
-
+ALLOWED_EXTENSIONS = {'.py', '.java', '.cpp', '.js', '.html', '.css', '.doc'}
 
 app = Flask(__name__)
 app.config['DATABASE'] = os.path.join(app.root_path, 'flsite.db')
 app.config['CONFIGS_DATABASE'] = os.path.join(app.root_path, 'configs.db')
 app.config['SECRET_KEY'] = 'SECRET'
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'uploads')
+app.config['DIAGRAM_FOLDER'] = os.path.join(app.root_path, 'diagrams')
+os.makedirs(app.config['DIAGRAM_FOLDER'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.app_context()
 
@@ -138,6 +140,14 @@ def repo_name_from_file(file):
         return repo['name'], repo['author']
     return None, None
 
+def allowed_file(filename):
+    return '.' in filename and os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route("/", methods=["POST", "GET"])
+def lol():
+    return redirect(url_for('profile'))
+
 
 @app.route("/login", methods=["POST", "GET"])
 def login():
@@ -213,7 +223,9 @@ def profile():
 def create_repo():
     if request.method == "POST":
         repo_name = request.form.get('repo_name').strip()
-        description = request.form.get('description').strip()
+        description = request.form.get('description', '').strip()
+        is_open = request.form.get('is_open') == 'on'  # Checkbox for open/closed
+        diagram = request.files.get('diagram')  # Diagram upload
 
         if not repo_name:
             flash("Repository name is required.", "error")
@@ -233,16 +245,25 @@ def create_repo():
         repo_dir = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(repo_name))
         os.makedirs(repo_dir, exist_ok=True)
 
-        # Save description as a text file
-        description_file_path = os.path.join(repo_dir, "description.txt")
-        with open(description_file_path, 'w') as desc_file:
-            desc_file.write(description or "")
+        # Handle diagram upload
+        diagram_path = None
+        if diagram and diagram.filename:
+            diagram_filename = secure_filename(diagram.filename)
+            diagram_path = os.path.join(app.config['DIAGRAM_FOLDER'], diagram_filename)
+            diagram.save(diagram_path)
 
         # Save repository information to the database
         db.execute("""
-            INSERT INTO repositories (user_id, name, description_file, created_time)
-            VALUES (?, ?, ?, ?)
-        """, (current_user.get_id(), repo_name, description_file_path, int(time.time())))
+            INSERT INTO repositories (user_id, name, description, created_time, is_open, diagram)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            current_user.get_id(),
+            repo_name,
+            description,  # Store description directly in DB
+            int(time.time()),
+            int(is_open),
+            diagram_path
+        ))
         db.commit()
 
         # Get repository ID
@@ -252,6 +273,9 @@ def create_repo():
         files = request.files.getlist('files')
         for file in files:
             if file and file.filename:
+                if not allowed_file(file.filename):
+                    flash(f"File '{file.filename}' is not an allowed file type.", "error")
+                    continue
                 filename = secure_filename(file.filename)
                 filepath = os.path.join(repo_dir, filename)
                 file.save(filepath)
@@ -263,10 +287,35 @@ def create_repo():
                 """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
         db.commit()
 
-        flash("Repository created successfully with uploaded files and description.", "success")
+        flash("Repository created successfully with uploaded files, description, and diagram.", "success")
         return redirect(url_for('view_repositories'))
 
     return render_template("create_repo.html")
+
+
+# If diagrams are stored outside the static folder, consider serving them securely
+@app.route('/diagram/<int:repo_id>')
+@login_required
+def get_diagram(repo_id):
+    db = get_db()
+    cur = db.cursor()
+    cur.execute("SELECT diagram, is_open, user_id FROM repositories WHERE repository_id = ?", (repo_id,))
+    repo = cur.fetchone()
+
+    if repo and repo['diagram']:
+        # Check access permissions
+        if repo['is_open'] or repo['user_id'] == current_user.get_id():
+            if os.path.exists(repo['diagram']):
+                return send_file(repo['diagram'], mimetype='image/*')
+            else:
+                flash("Diagram not found on the server.", "error")
+        else:
+            flash("You do not have permission to view this diagram.", "error")
+    else:
+        flash("Diagram not found in the database.", "error")
+
+    return redirect(url_for('view_repositories'))
+
 
 @app.route('/debug_current_user')
 @login_required
@@ -276,65 +325,75 @@ def debug_current_user():
 @app.route('/repo/<string:author>/<string:repo_name>', methods=["GET", "POST"])
 @login_required
 def view_repository(author, repo_name):
-
-    # Fetch the user by author name
     db = get_db()
     dbase = FDataBase(db)
     user = dbase.getUserByName(author)
 
-    # Check if user was found
     if not user:
         flash("Author not found.", "error")
         return redirect(url_for('view_repositories'))
 
-    # Fetch the repository for this user
-    db = get_db()
     repo = db.execute("""
         SELECT * FROM repositories WHERE user_id = ? AND name = ?
     """, (user['id'], repo_name)).fetchone()
 
-    # Check if repository exists
     if not repo:
         flash("Repository not found.", "error")
         return redirect(url_for('view_repositories'))
 
-    # **Permission Check**: Ensure current user is the owner
-    if int(repo['user_id']) != int(current_user.get_id()):
+    # **Access Control**:
+    # - If the repo is closed, only the owner can access.
+    # - If the repo is open, any authenticated user can view.
+    if not repo['is_open'] and int(repo['user_id']) != int(current_user.get_id()):
         flash("You do not have permission to access this repository.", "error")
         return redirect(url_for('view_repositories'))
 
-    # Handle updates (adding files or updating description)
-    if request.method == "POST":
+    # Handle updates (only the author can make changes)
+    if request.method == "POST" and int(repo['user_id']) == int(current_user.get_id()):
         action = request.form.get('action')
 
         if action == "add_files":
             files = request.files.getlist('files')
-            repo_dir = os.path.dirname(repo['description_file'])
+            repo_dir = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(repo['name']))
             for file in files:
+                if not allowed_file(file.filename):
+                    flash(f"File '{file.filename}' is not an allowed file type.", "error")
+                    continue
                 if file and file.filename:
                     filename = secure_filename(file.filename)
                     filepath = os.path.join(repo_dir, filename)
-                    if True:
-                        file.save(filepath)
-                        # Insert file info into uploads table
-                        db.execute("""
-                            INSERT INTO uploads (user_id, repository_id, filename, filepath, upload_time)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (current_user.get_id(), repo['repository_id'], filename, filepath, int(time.time())))
-                        print(f"File uploaded: {filename}")
-                    else:
-                        flash(f"File {filename} has an invalid extension and was not uploaded.", "error")
+                    file.save(filepath)
+                    db.execute("""
+                        INSERT INTO uploads (user_id, repository_id, filename, filepath, upload_time)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (current_user.get_id(), repo['repository_id'], filename, filepath, int(time.time())))
             db.commit()
             flash("Files added successfully.", "success")
 
         elif action == "update_description":
-            new_description = request.form.get('description').strip()
-            description_file_path = repo['description_file']
-            with open(description_file_path, 'w') as desc_file:
-                desc_file.write(new_description or "")
+            new_description = request.form.get('description', '').strip()
+            db.execute("""
+                UPDATE repositories SET description = ? WHERE repository_id = ?
+            """, (new_description, repo['repository_id']))
+            db.commit()
             flash("Description updated successfully.", "success")
 
-        # Ensure redirect includes both `author` and `repo_name`
+        elif action == "update_diagram":
+            new_diagram = request.files.get('diagram')
+            if new_diagram and new_diagram.filename:
+                diagram_filename = secure_filename(new_diagram.filename)
+                diagram_path = os.path.join(app.config['DIAGRAM_FOLDER'], diagram_filename)
+                new_diagram.save(diagram_path)
+                # Optionally, remove the old diagram file
+                if repo['diagram'] and os.path.exists(repo['diagram']):
+                    os.remove(repo['diagram'])
+                # Update the diagram path in the database
+                db.execute("""
+                    UPDATE repositories SET diagram = ? WHERE repository_id = ?
+                """, (diagram_path, repo['repository_id']))
+                db.commit()
+                flash("Diagram updated successfully.", "success")
+
         return redirect(url_for('view_repository', author=author, repo_name=repo_name))
 
     # Fetch all files in the repository
@@ -342,14 +401,13 @@ def view_repository(author, repo_name):
         SELECT * FROM uploads WHERE repository_id = ?
     """, (repo['repository_id'],)).fetchall()
 
-    # Read the description
-    if os.path.exists(repo['description_file']):
-        with open(repo['description_file'], 'r') as desc_file:
-            description = desc_file.read()
-    else:
-        description = ""
+    # Fetch description from the database
+    description = repo['description'] if repo['description'] else ""
 
-    return render_template("view_repository.html", repo=repo, files=files, description=description, author=author)
+    # Fetch the diagram path
+    diagram = repo['diagram'] if repo['diagram'] and os.path.exists(repo['diagram']) else None
+
+    return render_template("view_repository.html", repo=repo, files=files, description=description, author=author, diagram=diagram)
 
 
 
@@ -360,35 +418,36 @@ def delete_file(file_id):
     dbase = FDataBase(db)
     current_user_id = int(current_user.get_id())
 
-    # Correctly execute the query and fetch the result using the returned cursor
     cursor = db.execute("SELECT * FROM uploads WHERE id = ? AND user_id = ?", (file_id, current_user_id))
     file = cursor.fetchone()
 
     if not file:
         flash("File not found or you don't have permission to delete it.", "error")
-        return redirect(url_for('view_uploads'))
+        return redirect(url_for('view_repositories'))
 
-    # Fetch repository details using the correct repository_id
     repo_id = file['repository_id']
-    cursor = db.execute("SELECT name, user_id FROM repositories WHERE repository_id = ?", (repo_id,))
+    cursor = db.execute("SELECT name, user_id, is_open FROM repositories WHERE repository_id = ?", (repo_id,))
     repo = cursor.fetchone()
 
     if not repo:
         flash("Repository not found.", "error")
-        return redirect(url_for('view_uploads'))
+        return redirect(url_for('view_repositories'))
 
-    # Fetch author name
-    cursor = db.execute("SELECT name FROM users WHERE id = ?", (repo['user_id'],))
+    author_id = repo['user_id']
+    if author_id != current_user_id:
+        flash("You do not have permission to delete files from this repository.", "error")
+        return redirect(url_for('view_repositories'))
+
+    cursor = db.execute("SELECT name FROM users WHERE id = ?", (author_id,))
     author = cursor.fetchone()
 
     if not author:
         flash("Author not found.", "error")
-        return redirect(url_for('view_uploads'))
+        return redirect(url_for('view_repositories'))
 
     author_name = author['name']
     repo_name = repo['name']
 
-    # Delete the file from the filesystem
     try:
         if os.path.exists(file['filepath']):
             os.remove(file['filepath'])
@@ -398,7 +457,6 @@ def delete_file(file_id):
         flash(f"Error deleting file from filesystem: {e}", "error")
         return redirect(url_for('view_repository', author=author_name, repo_name=repo_name))
 
-    # Delete the record from the database
     try:
         db.execute("DELETE FROM uploads WHERE id = ?", (file_id,))
         db.commit()
@@ -411,15 +469,13 @@ def delete_file(file_id):
 
 
 
-
-
 @app.route('/view_repositories')
 @login_required
 def view_repositories():
     db = get_db()
     cur = db.cursor()
 
-    # Fetch all repositories for the current user
+    # Fetch open repositories and user's own repositories
     cur.execute("SELECT * FROM repositories WHERE user_id = ?", (current_user.get_id(),))
     repositories = cur.fetchall()
 
@@ -428,7 +484,6 @@ def view_repositories():
 
     files = []
     if repo_ids:
-        # Dynamically create placeholders based on the number of repo_ids
         placeholders = ','.join(['?'] * len(repo_ids))
         query = f"SELECT * FROM uploads WHERE repository_id IN ({placeholders})"
         cur.execute(query, repo_ids)
@@ -442,7 +497,6 @@ def view_repositories():
             files_by_repo[repo_id] = []
         files_by_repo[repo_id].append(file)
 
-    # Pass repositories and their corresponding files to the template
     return render_template("view_repositories.html", repositories=repositories, files_by_repo=files_by_repo)
 
 @app.route('/all_repositories', methods=["GET"])
@@ -451,31 +505,35 @@ def all_repositories():
     db = get_db()
     cursor = db.cursor()
 
+    # Get the current user's ID
+    current_user_id = int(current_user.get_id())
+
     # Get search query from the request
     search_query = request.args.get('search', '').strip()
 
-    # SQL query with search condition
+    # SQL query to include open repositories and current user's repositories
     query = """
-        SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description_file, u.name AS author_name
+        SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description, u.name AS author_name
         FROM repositories r
         JOIN users u ON r.user_id = u.id
+        WHERE r.is_open = 1 OR r.user_id = ?
         ORDER BY r.created_time DESC
     """
-    cursor.execute(query)
+    cursor.execute(query, (current_user_id,))
     repositories = cursor.fetchall()
 
     # Process descriptions and filter based on search query
     repos_with_descriptions = []
     for repo in repositories:
-        # Read description from file if it exists
-        description = ""
-        if repo['description_file'] and os.path.exists(repo['description_file']):
-            with open(repo['description_file'], 'r') as desc_file:
-                description = desc_file.read()
+        description = repo['description'] if repo['description'] else ""
 
         # Filter results based on search query if provided
-        if not search_query or search_query.lower() in description.lower():
+        if (not search_query or 
+            search_query.lower() in description.lower() or 
+            search_query.lower() in repo['repo_name'].lower() or 
+            search_query.lower() in repo['author_name'].lower()):
             repos_with_descriptions.append({
+                'repo_id': repo['repository_id'],
                 'repo_name': repo['repo_name'],
                 'created_time': repo['created_time'],
                 'author_name': repo['author_name'],
@@ -485,7 +543,7 @@ def all_repositories():
     # Check if the request is an AJAX request
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify(repositories=repos_with_descriptions)
-    
+
     # For normal requests, render the template
     return render_template("all_repositories.html", repositories=repos_with_descriptions, search_query=search_query)
 
@@ -498,45 +556,59 @@ def download_file(file_id):
     file = cursor.fetchone()
 
     if file and file['filepath']:
-        # Fetch the repository's user_id for permission check
         repo_cursor = db.execute("""
-            SELECT user_id FROM repositories WHERE repository_id = ?
+            SELECT user_id, is_open FROM repositories WHERE repository_id = ?
         """, (file['repository_id'],))
         repo = repo_cursor.fetchone()
 
-        # Check if the current user is the owner of the repository
-        if repo and int(repo['user_id']) == int(current_user.get_id()):
-            if os.path.exists(file['filepath']):
-                return send_file(file['filepath'], as_attachment=True, download_name=file['filename'])
+        if repo:
+            # Check permissions
+            if repo['is_open'] or int(repo['user_id']) == int(current_user.get_id()):
+                if os.path.exists(file['filepath']):
+                    return send_file(file['filepath'], as_attachment=True, download_name=file['filename'])
+                else:
+                    flash("File not found on the server.", "error")
             else:
-                flash("File not found on the server.", "error")
+                flash("You do not have permission to download this file.", "error")
         else:
-            flash("You do not have permission to download this file.", "error")
+            flash("Repository not found.", "error")
     else:
         flash("File not found in the database.", "error")
 
     return redirect(url_for('view_repositories'))
 
-
-
-
 @app.route('/download_description/<int:repo_id>')
 @login_required
 def download_description(repo_id):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT description_file FROM repositories WHERE repository_id = ?", (repo_id,))
-    repo = cur.fetchone()
+    cursor = db.execute("""
+        SELECT description, is_open, user_id FROM repositories WHERE repository_id = ?
+    """, (repo_id,))
+    repo = cursor.fetchone()
 
-    if repo and repo['description_file']:
-        if os.path.exists(repo['description_file']):
-            return send_file(repo['description_file'], as_attachment=True, download_name="description.txt")
-        else:
-            flash("Description file not found on the server.", "error")
+    if not repo:
+        flash("Repository not found.", "error")
+        return redirect(url_for('view_repositories'))
+
+    # Access Control
+    if not repo['is_open'] and int(repo['user_id']) != int(current_user.get_id()):
+        flash("You do not have permission to download this description.", "error")
+        return redirect(url_for('view_repositories'))
+
+    description = repo['description'] if repo['description'] else ""
+
+    if description:
+        from io import BytesIO
+        return send_file(
+            BytesIO(description.encode('utf-8')),
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name='description.txt'
+        )
     else:
-        flash("Description file not found in the database.", "error")
-    
-    return redirect(url_for('view_repositories'))
+        flash("Description is empty.", "warning")
+        return redirect(url_for('view_repository', author=db.execute("SELECT name FROM users WHERE id = ?", (repo['user_id'],)).fetchone()['name'], repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
+
 
 
 

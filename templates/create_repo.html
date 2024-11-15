@@ -7,7 +7,7 @@
 </head>
 <body>
     <h1>Create a New Repository</h1>
-    {% with messages = get_flashed_messages(with_categories=true) %}
+    <!-- {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <ul class="flashes">
           {% for category, message in messages %}
@@ -15,20 +15,28 @@
           {% endfor %}
         </ul>
       {% endif %}
-    {% endwith %}
-    <form action="{{ url_for('create_repo') }}" method="post" enctype="multipart/form-data">
-        <label for="repo_name">Repository Name:</label><br>
-        <input type="text" id="repo_name" name="repo_name" required><br><br>
+    {% endwith %} -->
+    <h1>Create Repository</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <label for="repo_name">Repository Name:</label>
+      <input type="text" id="repo_name" name="repo_name" required><br><br>
 
-        <label for="description">Description:</label><br>
-        <textarea id="description" name="description" rows="4" cols="50"></textarea><br><br>
+      <label for="description">Description:</label><br>
+      <textarea id="description" name="description" rows="5" cols="50">{{ description }}</textarea><br><br>
 
-        <label for="files">Upload Files:</label><br>
-        <input type="file" id="files" name="files" multiple><br><br>
+      <label for="is_open">Open Repository:</label>
+      <input type="checkbox" id="is_open" name="is_open" checked><br><br>
 
-        <input type="submit" value="Create Repository">
-    </form>
+      <label for="diagram">Upload Diagram:</label>
+      <input type="file" id="diagram" name="diagram"><br><br>
+
+      <label for="files">Upload Files:</label>
+      <input type="file" id="files" name="files" multiple><br><br>
+
+      <button type="submit">Create Repository</button>
+  </form>
     <br>
     <a href="{{ url_for('view_repositories') }}">My Repositories</a>
+    <a href="{{ url_for('all_repositories') }}">All Repositories</a>
 </body>
 </html>

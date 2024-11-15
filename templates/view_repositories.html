@@ -7,7 +7,7 @@
 </head>
 <body>
     <h1>Your Repositories</h1>
-    {% with messages = get_flashed_messages(with_categories=true) %}
+    <!-- {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <ul class="flashes">
           {% for category, message in messages %}
@@ -15,7 +15,7 @@
           {% endfor %}
         </ul>
       {% endif %}
-    {% endwith %}
+    {% endwith %} -->
     <a href="{{ url_for('create_repo') }}">Create New Repository</a>
     <ul>
         {% for repo in repositories %}
@@ -31,5 +31,6 @@
     </ul>
     <br>
     <a href="{{ url_for('logout') }}">Logout</a>
+    <a href="{{ url_for('all_repositories') }}">All Repositories</a>
 </body>
 </html>
