@@ -1,4 +1,5 @@
 import sqlite3
+from dotenv import load_dotenv
 import os
 from flask import Flask, render_template, request, g, flash, redirect, url_for
 from flask import send_file
@@ -9,7 +10,15 @@ from UserLogin import UserLogin
 import time
 from datetime import datetime
 from flask import jsonify
+from openai import OpenAI
 
+load_dotenv()
+
+client = OpenAI(
+    # This is the default and can be omitted
+    api_key=os.environ.get("API_KEY")
+
+)
 
 ALLOWED_EXTENSIONS = {'.py', '.java', '.cpp', '.js', '.html', '.css', '.doc'}
 
@@ -143,6 +152,52 @@ def repo_name_from_file(file):
 def allowed_file(filename):
     return '.' in filename and os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
 
+def read_repository_files(repo_dir):
+    file_contents = ""
+    for root, dirs, files in os.walk(repo_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            # Only process text-based files
+            if allowed_file(file):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # Limit content to avoid exceeding token limits
+                        content = content[:2000]  # Read first 1000 characters
+                        file_contents += f"\n### File: {file}\n{content}\n"
+                except Exception as e:
+                    print(f"Error reading file {file_path}: {e}")
+    return file_contents
+
+
+def generate_description(file_contents, current_description):
+    prompt = f"""
+    Here is the current description of the repository:
+
+    {current_description}
+
+    Here are the contents of the repository files:
+
+    {file_contents}
+
+    Based on the above, please provide a concise and informative description for this repository.
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",  # Replace with "gpt-3.5-turbo" if needed
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that writes repository descriptions."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        description = response.choices[0].message.content
+        return description
+    except Exception as e:
+        print(f"Error generating description: {e}")
+        return None
+
+
 
 @app.route("/", methods=["POST", "GET"])
 def lol():
@@ -227,6 +282,7 @@ def create_repo():
         is_open = request.form.get('is_open') == 'on'  # Checkbox for open/closed
         diagram = request.files.get('diagram')  # Diagram upload
 
+
         if not repo_name:
             flash("Repository name is required.", "error")
             return redirect(url_for('create_repo'))
@@ -269,6 +325,11 @@ def create_repo():
         # Get repository ID
         repo_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
+        file_contents = read_repository_files(repo_dir)
+        new_description = generate_description(file_contents, description)
+        print("--------------------------------------------------------------------------------")
+        print(file_contents)
+        print("--------------------------------------------------------------------------------")
         # Handle uploaded files
         files = request.files.getlist('files')
         for file in files:
@@ -286,6 +347,21 @@ def create_repo():
                     VALUES (?, ?, ?, ?, ?)
                 """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
         db.commit()
+
+        file_contents = read_repository_files(repo_dir)
+        if file_contents:
+            new_description = generate_description(file_contents, description)
+            if new_description:
+                # Update the repository's description in the database
+                db.execute("""
+                    UPDATE repositories SET description = ? WHERE repository_id = ?
+                """, (new_description, repo_id))
+                db.commit()
+                flash("Repository created and description generated successfully.", "success")
+            else:
+                flash("Repository created but failed to generate description.", "warning")
+        else:
+            flash("Repository created but no files to generate description.", "warning")
 
         flash("Repository created successfully with uploaded files, description, and diagram.", "success")
         return redirect(url_for('view_repositories'))
@@ -369,6 +445,23 @@ def view_repository(author, repo_name):
                     """, (current_user.get_id(), repo['repository_id'], filename, filepath, int(time.time())))
             db.commit()
             flash("Files added successfully.", "success")
+
+            file_contents = read_repository_files(repo_dir)
+            current_description = repo['description'] if repo['description'] else ""
+            if file_contents:
+                new_description = generate_description(file_contents, current_description)
+                if new_description:
+                    # Update the repository's description in the database
+                    db.execute("""
+                        UPDATE repositories SET description = ? WHERE repository_id = ?
+                    """, (new_description, repo['repository_id']))
+                    db.commit()
+                    flash("Files added and description updated successfully.", "success")
+                else:
+                    flash("Files added but failed to update description.", "warning")
+            else:
+                flash("Files added but no files to generate description.", "warning")
+
 
         elif action == "update_description":
             new_description = request.form.get('description', '').strip()
