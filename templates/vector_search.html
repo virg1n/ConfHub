@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vector Search</title>
+    <!-- Include your CSS and other head elements here -->
+</head>
+<body>
+    <h1>Vector Search</h1>
+    <form method="POST">
+        <input type="text" name="search_query" placeholder="Enter search terms" value="{{ search_query or '' }}" required>
+        <button type="submit">Search</button>
+    </form>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+          {% for category, message in messages %}
+            <li class="{{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    {% if repositories %}
+        <h2>Search Results:</h2>
+        <ul>
+            {% for repo in repositories %}
+                <li>
+                    <a href="{{ url_for('view_repository', author=repo['author'], repo_name=repo['name']) }}">
+                        {{ repo['name'] }}
+                    </a> by {{ repo['author'] }}
+                    <p>{{ repo['description'][:200] }}{% if repo['description']|length > 200 %}...{% endif %}</p>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</body>
+</html>

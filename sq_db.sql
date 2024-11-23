@@ -8,11 +8,19 @@
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    username TEXT NOT NULL UNIQUE,
+    organization TEXT,
+    country TEXT,
+    city TEXT,
+    address TEXT,
+    phone_number TEXT,
     email TEXT NOT NULL UNIQUE,
     psw TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );
+
 
 -- Create repositories table with 'description' and 'diagram'
 CREATE TABLE IF NOT EXISTS repositories (
@@ -24,6 +32,7 @@ CREATE TABLE IF NOT EXISTS repositories (
     is_open INTEGER NOT NULL,
     diagram TEXT,
     is_description_ai_generated INTEGER DEFAULT 0,
+    vector BLOB,  -- Column for storing vector embeddings
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 

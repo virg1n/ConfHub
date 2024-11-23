@@ -1,17 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>User Profile</title>
+    <!-- Your head content -->
 </head>
 <body>
-    <h1>Welcome, {{ current_user.name }}!</h1>
+    <h2>Welcome, {{ current_user.first_name }} {{ current_user.last_name }}</h2>
+    <p>Username: {{ current_user.name }}</p>
+    <p>Email: {{ current_user.email }}</p>
 
+    <!-- Optional Fields -->
+    {% if current_user.organization %}
+        <p>Organization: {{ current_user.organization }}</p>
+    {% endif %}
+    {% if current_user.country %}
+        <p>Country: {{ current_user.country }}</p>
+    {% endif %}
+    {% if current_user.city %}
+        <p>City: {{ current_user.city }}</p>
+    {% endif %}
+    {% if current_user.address %}
+        <p>Address: {{ current_user.address }}</p>
+    {% endif %}
+    {% if current_user.phone_number %}
+        <p>Phone Number: {{ current_user.phone_number }}</p>
+    {% endif %}
 
-    <p><a href="{{ url_for('all_repositories') }}">View All_repositories</a></p>
-    <p><a href="{{ url_for('create_repo') }}">create_repo</a></p>
-
-
-    <p><a href="{{ url_for('logout') }}">Logout</a></p>
+    <!-- Rest of your profile content -->
+    <a href="{{ url_for('logout') }}">Logout</a>
 </body>
 </html>

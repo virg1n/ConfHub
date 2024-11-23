@@ -11,6 +11,12 @@ import time
 from datetime import datetime
 from flask import jsonify
 from openai import OpenAI
+import pickle
+import faiss
+import numpy as np
+
+
+from VctSrch import vector_search_repos, description_to_embedding
 
 load_dotenv()
 
@@ -18,10 +24,10 @@ client = OpenAI(
     api_key=os.environ.get("API_KEY")
 )
 
-ALLOWED_EXTENSIONS = {'.py', '.java', '.cpp', '.js', '.html', '.css', '.doc'}
+ALLOWED_EXTENSIONS = {'.py', '.java', '.cpp', '.js', '.html', '.css', '.doc', '.cfg', '.txt'}
 
 app = Flask(__name__)
-app.config['DATABASE'] = os.path.join(app.root_path, 'flsite.db')
+app.config['DATABASE'] = os.path.join(app.root_path, 'database.db')
 # app.config['CONFIGS_DATABASE'] = os.path.join(app.root_path, 'configs.db')
 app.config['SECRET_KEY'] = 'SECRET'
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'uploads')
@@ -93,31 +99,47 @@ class FDataBase:
 
     def getUserByName(self, name):
         try:
-            self.__cur.execute("SELECT * FROM users WHERE name = ? LIMIT 1", (name,))
+            self.__cur.execute("SELECT * FROM users WHERE username = ? LIMIT 1", (name,))
             user = self.__cur.fetchone()
             if user:
-                print(f"User found: {user['name']} (ID: {user['id']})")
+                print(f"User found: {user['username']} (ID: {user['id']})")
             else:
-                print(f"No user found with name: {name}")
+                print(f"No user found with username: {name}")
             return user
         except sqlite3.Error as e:
-            print("Error retrieving user by name from DB: " + str(e))
+            print("Error retrieving user by username from DB: " + str(e))
             return False
 
-    def addUser(self, name, email, hpsw):
+    def addUser(self, first_name, last_name, username, email, hpsw, organization=None, country=None, city=None, address=None, phone_number=None):
         try:
-            self.__cur.execute("SELECT COUNT() as `count` FROM users WHERE email = ?", (email,))
+            # Check if email or username already exists
+            self.__cur.execute("SELECT COUNT() as `count` FROM users WHERE email = ? OR username = ?", (email, username))
             if self.__cur.fetchone()['count'] > 0:
                 return False
 
-            self.__cur.execute("INSERT INTO users (name, email, psw, created_at) VALUES (?, ?, ?, ?)", 
-                               (name, email, hpsw, int(time.time())))
+            self.__cur.execute("""
+                INSERT INTO users 
+                (first_name, last_name, username, email, psw, organization, country, city, address, phone_number, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                first_name,
+                last_name,
+                username,
+                email,
+                hpsw,
+                organization,
+                country,
+                city,
+                address,
+                phone_number,
+                int(time.time())
+            ))
             self.__db.commit()
             return True
         except sqlite3.Error as e:
             print("Error adding user to DB: " + str(e))
             return False
-    
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -197,6 +219,7 @@ def generate_description(file_contents, current_description):
 
 
 
+
 @app.route("/", methods=["POST", "GET"])
 def lol():
     return redirect(url_for('profile'))
@@ -210,15 +233,25 @@ def login():
     if request.method == "POST":
         db = get_db()
         dbase = FDataBase(db)
-        user = dbase.getUserByEmail(request.form['email'])
-        if user and check_password_hash(user['psw'], request.form['password']):
+        identifier = request.form['identifier'].strip()  # Can be email or username
+        password = request.form['password']
+
+        # Determine if the identifier is an email or username
+        if "@" in identifier:
+            user = dbase.getUserByEmail(identifier)
+        else:
+            user = dbase.getUserByName(identifier)
+
+        if user and check_password_hash(user['psw'], password):
             userlogin = UserLogin().create(user)
             login_user(userlogin, remember=True if request.form.get('remember') else False)
             return redirect(request.args.get("next") or url_for("profile"))
 
-        flash("Invalid email or password", "error")
+        flash("Invalid credentials.", "error")
 
     return render_template("login.html")
+
+
 
 @app.route("/register", methods=["POST", "GET"])
 def register():
@@ -228,19 +261,45 @@ def register():
     if request.method == "POST":
         db = get_db()
         dbase = FDataBase(db)
-        if len(request.form['name']) > 4 and len(request.form['email']) > 4 and len(request.form['password']) > 4:
-            hash = generate_password_hash(request.form['password'])
-            if dbase.addUser(request.form['name'], request.form['email'], hash):
-                user = dbase.getUserByEmail(request.form['email'])
-                userlogin = UserLogin().create(user)
-                login_user(userlogin, remember=False)
-                return redirect(url_for("profile"))
-            else:
-                flash("This email is already in use", "error")
+
+        # Retrieve form data
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+
+        # Optional fields
+        organization = request.form.get('organization', '').strip() or None
+        country = request.form.get('country', '').strip() or None
+        city = request.form.get('city', '').strip() or None
+        address = request.form.get('address', '').strip() or None
+        phone_number = request.form.get('phone_number', '').strip() or None
+
+        # Validate required fields
+        if not first_name or not last_name or not username or not email or not password:
+            flash("Please fill out all required fields.", "error")
+            return render_template("register.html")
+
+        if len(username) < 4:
+            flash("Username must be at least 4 characters long.", "error")
+            return render_template("register.html")
+
+        # Hash the password
+        hashed_password = generate_password_hash(password)
+
+        # Attempt to add the user
+        if dbase.addUser(first_name, last_name, username, email, hashed_password, organization, country, city, address, phone_number):
+            user = dbase.getUserByEmail(email)
+            userlogin = UserLogin().create(user)
+            login_user(userlogin, remember=False)
+            flash("Registration successful!", "success")
+            return redirect(url_for("profile"))
         else:
-            flash("Incorrect input fields", "error")
+            flash("Registration failed. Email or username may already be in use.", "error")
 
     return render_template("register.html")
+
 
 @app.route('/logout')
 @login_required
@@ -363,6 +422,14 @@ def create_repo():
                     flash("Repository created but failed to generate description.", "warning")
             else:
                 flash("Repository created but no files to generate description.", "warning")
+
+            if final_description:
+                embedding = description_to_embedding(final_description)
+                embedding_blob = pickle.dumps(embedding)
+                db.execute("""
+                    UPDATE repositories SET vector = ? WHERE repository_id = ?
+                """, (embedding_blob, repo_id))
+                db.commit()
         else:
             # Insert repository with user-provided description
             db.execute("""
@@ -399,6 +466,14 @@ def create_repo():
                         VALUES (?, ?, ?, ?, ?)
                     """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
             db.commit()
+
+            if description:
+                embedding = description_to_embedding(description)
+                embedding_blob = pickle.dumps(embedding)
+                db.execute("""
+                    UPDATE repositories SET vector = ? WHERE repository_id = ?
+                """, (embedding_blob, repo_id))
+                db.commit()
 
             flash("Repository created successfully.", "success")
 
@@ -520,14 +595,18 @@ def view_repository(author, repo_name):
                 if file_contents:
                     generated_description = generate_description(file_contents, new_description)
                     if generated_description:
+
+                        embedding = description_to_embedding(generated_description)
+                        embedding_blob = pickle.dumps(embedding)
                         # Update the repository's description in the database
                         db.execute("""
                             UPDATE repositories 
-                            SET description = ?, is_description_ai_generated = ?
+                            SET description = ?, is_description_ai_generated = ?, vector = ?
                             WHERE repository_id = ?
-                        """, (generated_description, 1, repo['repository_id']))
+                            """, (generated_description, 1, embedding_blob, repo['repository_id']))
                         db.commit()
                         flash("Description updated using AI.", "success")
+
                     else:
                         flash("Failed to generate description using AI.", "warning")
                 else:
@@ -536,9 +615,9 @@ def view_repository(author, repo_name):
                 # Update with user-provided description
                 db.execute("""
                     UPDATE repositories 
-                    SET description = ?, is_description_ai_generated = ?
+                    SET description = ?, is_description_ai_generated = ?, vector = ?
                     WHERE repository_id = ?
-                """, (new_description, 0, repo['repository_id']))
+                """, (new_description, 0, pickle.dumps(description_to_embedding(new_description)), repo['repository_id']))
                 db.commit()
                 flash("Description updated successfully.", "success")
 
@@ -677,13 +756,16 @@ def all_repositories():
 
     # SQL query to include open repositories and current user's repositories
     query = """
-        SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description, u.name AS author_name
-        FROM repositories r
-        JOIN users u ON r.user_id = u.id
-        WHERE r.is_open = 1 OR r.user_id = ?
-        ORDER BY r.created_time DESC
+    SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description,
+           u.first_name || ' ' || u.last_name AS author_name
+    FROM repositories r
+    JOIN users u ON r.user_id = u.id
+    WHERE r.is_open = 1 OR r.user_id = ?
+    ORDER BY r.created_time DESC
     """
     cursor.execute(query, (current_user_id,))
+
+
     repositories = cursor.fetchall()
 
     # Process descriptions and filter based on search query
@@ -773,6 +855,42 @@ def download_description(repo_id):
         flash("Description is empty.", "warning")
         return redirect(url_for('view_repository', author=db.execute("SELECT name FROM users WHERE id = ?", (repo['user_id'],)).fetchone()['name'], repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
 
+
+from VctSrch import vector_search_repos
+
+@app.route('/vector_search', methods=["GET", "POST"])
+@login_required
+def vector_search():
+    if request.method == "POST":
+        search_query = request.form.get('search_query', '').strip()
+        if not search_query:
+            flash("Please enter a search query.", "error")
+            return redirect(url_for('vector_search'))
+        
+        db = get_db()
+        similar_repo_ids = vector_search_repos(db, search_query, k=5)
+        
+        if not similar_repo_ids:
+            flash("No similar repositories found.", "info")
+            return render_template("vector_search.html", repositories=[])
+        
+        # Fetch repository details
+        placeholders = ','.join(['?'] * len(similar_repo_ids))
+        query = f"""
+            SELECT r.*, u.username as author
+            FROM repositories r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.repository_id IN ({placeholders})
+        """
+        repos = db.execute(query, similar_repo_ids).fetchall()
+        
+        # Optionally, order repos based on similarity
+        # Assuming `similar_repo_ids` is ordered by similarity
+        repos_ordered = sorted(repos, key=lambda x: similar_repo_ids.index(x['repository_id']))
+        
+        return render_template("vector_search.html", repositories=repos_ordered, search_query=search_query)
+    
+    return render_template("vector_search.html")
 
 
 
