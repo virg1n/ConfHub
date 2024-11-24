@@ -14,6 +14,11 @@ from openai import OpenAI
 import pickle
 import faiss
 import numpy as np
+from pygments import highlight
+from pygments.lexers import get_lexer_for_filename, TextLexer
+from pygments.formatters import HtmlFormatter
+import io
+import zipfile
 
 
 from VctSrch import vector_search_repos, description_to_embedding
@@ -652,7 +657,89 @@ def view_repository(author, repo_name):
 
     return render_template("view_repository.html", repo=repo, files=files, description=description, author=author, diagram=diagram)
 
+@app.route('/repo/<int:repo_id>/file/<int:file_id>')
+@login_required
+def view_repo(repo_id, file_id):
+    db = get_db()
+    cursor = db.execute("""
+        SELECT u.*, r.user_id as repo_owner_id, r.is_open
+        FROM uploads u
+        JOIN repositories r ON u.repository_id = r.repository_id
+        WHERE u.id = ? AND u.repository_id = ?
+    """, (file_id, repo_id))
+    file = cursor.fetchone()
 
+    if not file:
+        flash("File not found.", "error")
+        return redirect(url_for('view_repositories'))
+
+    repo_owner_id = file['repo_owner_id']
+    is_open = file['is_open']
+
+    # Access Control
+    if not is_open and repo_owner_id != int(current_user.get_id()):
+        flash("You do not have permission to view this file.", "error")
+        return redirect(url_for('view_repositories'))
+
+    # Read file content
+    try:
+        with open(file['filepath'], 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        flash(f"Error reading file: {e}", "error")
+        return redirect(url_for('view_repository', author=db.execute("SELECT username FROM users WHERE id = ?", (repo_owner_id,)).fetchone()['username'], repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
+
+    # Optional: Syntax Highlighting using Pygments
+    try:
+        lexer = get_lexer_for_filename(file['filename'])
+    except:
+        lexer = TextLexer()
+
+    formatter = HtmlFormatter(linenos=True, cssclass="source")
+    highlighted_content = highlight(content, lexer, formatter)
+
+    return render_template("view_file.html", file=file, repo=db.execute("SELECT * FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone(), author=db.execute("SELECT username FROM users WHERE id = ?", (repo_owner_id,)).fetchone()['username'], content=highlighted_content)
+
+@app.route('/repo/<int:repo_id>/download_zip')
+@login_required
+def download_repo_zip(repo_id):
+    db = get_db()
+    cursor = db.execute("""
+        SELECT * FROM repositories WHERE repository_id = ?
+    """, (repo_id,))
+    repo = cursor.fetchone()
+
+    if not repo:
+        flash("Repository not found.", "error")
+        return redirect(url_for('view_repositories'))
+
+    # Access Control
+    if not repo['is_open'] and int(repo['user_id']) != int(current_user.get_id()):
+        flash("You do not have permission to download this repository.", "error")
+        return redirect(url_for('view_repositories'))
+
+    repo_dir = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(repo['name']))
+    if not os.path.exists(repo_dir):
+        flash("Repository files not found on the server.", "error")
+        return redirect(url_for('view_repository', author=db.execute("SELECT username FROM users WHERE id = ?", (repo['user_id'],)).fetchone()['username'], repo_name=repo['name']))
+
+    # Create a ZIP in memory
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(repo_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, repo_dir)
+                zipf.write(file_path, arcname)
+
+    memory_file.seek(0)
+
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f"{repo['name']}.zip"
+    )
 
 @app.route('/delete_file/<int:file_id>', methods=["POST", "GET"])
 @login_required
@@ -856,8 +943,73 @@ def download_description(repo_id):
         flash("Description is empty.", "warning")
         return redirect(url_for('view_repository', author=db.execute("SELECT name FROM users WHERE id = ?", (repo['user_id'],)).fetchone()['name'], repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
 
+@app.route('/view_file/<int:repo_id>/<int:file_id>', methods=["GET"])
+@login_required
+def view_file(repo_id, file_id):
+    db = get_db()
 
-from VctSrch import vector_search_repos
+    # Fetch the file details
+    file = db.execute("""
+        SELECT * FROM uploads WHERE id = ? AND repository_id = ?
+    """, (file_id, repo_id)).fetchone()
+
+    if not file:
+        flash("File not found.", "error")
+        return redirect(url_for('view_repository', author=db.execute(
+            "SELECT username FROM users WHERE id = (SELECT user_id FROM repositories WHERE repository_id = ?)", 
+            (repo_id,)
+        ).fetchone()['username'], 
+        repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
+
+    # Check repository access permissions
+    repo = db.execute("SELECT * FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()
+    if not repo:
+        flash("Repository not found.", "error")
+        return redirect(url_for('view_repositories'))
+
+    if not repo['is_open'] and int(repo['user_id']) != int(current_user.get_id()):
+        flash("You do not have permission to access this file.", "error")
+        return redirect(url_for('view_repositories'))
+
+    filepath = file['filepath']
+    if not os.path.exists(filepath):
+        flash("File not found on the server.", "error")
+        return redirect(url_for('view_repository', author=db.execute(
+            "SELECT username FROM users WHERE id = (SELECT user_id FROM repositories WHERE repository_id = ?)", 
+            (repo_id,)
+        ).fetchone()['username'], 
+        repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
+    
+    author=db.execute(
+            "SELECT username FROM users WHERE id = (SELECT user_id FROM repositories WHERE repository_id = ?)", 
+            (repo_id,)
+        ).fetchone()['username']
+    
+    try:
+        # Read the file content
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        flash(f"Error reading file: {e}", "error")
+        return redirect(url_for('view_repository', author=author, 
+        repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
+
+    # Syntax highlighting
+    try:
+        lexer = get_lexer_for_filename(file['filename'], fallback=TextLexer())
+    except Exception:
+        lexer = TextLexer()
+
+    formatter = HtmlFormatter(linenos=True, cssclass="source")
+    highlighted_code = highlight(content, lexer, formatter)
+
+    return render_template("view_file.html", 
+                           file=file, 
+                           repo=repo, 
+                           highlighted_code=highlighted_code,
+                           author=author)
+
+
 
 @app.route('/vector_search', methods=["GET", "POST"])
 @login_required
