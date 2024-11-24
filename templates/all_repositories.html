@@ -27,10 +27,15 @@
             {% for repo in repositories %}
                 <tr>
                     <td>{{ repo.repo_name }}</td>
-                    <td>{{ repo.author_name }}</td>
+                    <td>
+                        <a href="{{ url_for('user_profile', username=repo.username) }}">
+                            {{ repo.author_name }}
+                        </a>
+                    </td>
+                    
                     <td>{{ repo.created_time | datetimeformat }}</td>
                     <td class="description-cell">{{ repo.description }}</td>
-                    <td><a href="{{ url_for('view_repository', author=repo.author_name, repo_name=repo.repo_name) }}" class="btn btn-primary btn-sm">View</a></td>
+                    <td><a href="{{ url_for('view_repository', author=repo.username, repo_name=repo.repo_name) }}" class="btn btn-primary btn-sm">View</a></td>
                 </tr>
             {% else %}
                 <tr>

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - Open..{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>{{ user.first_name }} {{ user.last_name }}'s Profile</h1>
+
+    <h2>Details</h2>
+    <ul>
+        <li><strong>Organization:</strong> {{ user.organization or "N/A" }}</li>
+        <li><strong>Country:</strong> {{ user.country or "N/A" }}</li>
+        <li><strong>City:</strong> {{ user.city or "N/A" }}</li>
+        <li><strong>Address:</strong> {{ user.address or "N/A" }}</li>
+    </ul>
+
+    <h2>Open Repositories</h2>
+    {% if repositories %}
+        <ul>
+            {% for repo in repositories %}
+                <li>
+                    <h3>
+                        <a href="{{ url_for('view_repository', author=user.username, repo_name=repo.repo_name) }}">
+                            {{ repo.repo_name }}
+                        </a>
+                    </h3>
+                    <p>{{ repo.description or "No description available." }}</p>
+                    <!-- <p><strong>Created:</strong> {{ repo.created_time | datetimeformat }}</p> -->
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No open repositories available.</p>
+    {% endif %}
+</div>
+
+<div class="mt-4">
+    <a href="{{ url_for('view_repositories') }}" class="btn btn-secondary">Back to Repositories</a>
+</div>
+{% endblock %}
+

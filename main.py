@@ -756,7 +756,7 @@ def all_repositories():
 
     # SQL query to include open repositories and current user's repositories
     query = """
-    SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description,
+    SELECT r.repository_id, r.name AS repo_name, r.created_time, r.description, u.username,
            u.first_name || ' ' || u.last_name AS author_name
     FROM repositories r
     JOIN users u ON r.user_id = u.id
@@ -783,7 +783,8 @@ def all_repositories():
                 'repo_name': repo['repo_name'],
                 'created_time': repo['created_time'],
                 'author_name': repo['author_name'],
-                'description': description[:200]
+                'description': description[:200],
+                'username': repo['username'],
             })
 
     # Check if the request is an AJAX request
@@ -880,7 +881,7 @@ def vector_search():
             SELECT r.*, u.username as author
             FROM repositories r
             JOIN users u ON r.user_id = u.id
-            WHERE r.repository_id IN ({placeholders})
+            WHERE r.repository_id IN ({placeholders}) AND r.is_open = 1
         """
         repos = db.execute(query, similar_repo_ids).fetchall()
         
@@ -892,6 +893,40 @@ def vector_search():
     
     return render_template("vector_search.html")
 
+@app.route('/user/profile/<string:username>', methods=["GET"])
+@login_required
+def user_profile(username):
+    db = get_db()
+    dbase = FDataBase(db)
+
+    # Fetch user information by username
+    user = dbase.getUserByName(username)
+
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for('view_repositories'))
+
+    # Fetch the open repositories for this user
+    repositories = db.execute("""
+        SELECT r.name AS repo_name, r.description, r.created_time 
+        FROM repositories r 
+        WHERE r.user_id = ? AND r.is_open = 1
+        ORDER BY r.created_time DESC
+    """, (user['id'],)).fetchall()
+
+    return render_template(
+        "user_profile.html",
+        user={
+            "first_name": user['first_name'],
+            "last_name": user['last_name'],
+            "organization": user['organization'],
+            "country": user['country'],
+            "city": user['city'],
+            "address": user['address'],
+            "username": user['username']
+        },
+        repositories=repositories
+    )
 
 
 if __name__ == "__main__":

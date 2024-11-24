@@ -1,11 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Vector Search</title>
-    <!-- Include your CSS and other head elements here -->
-</head>
-<body>
+
+<!-- templates/create_repo.html -->
+{% extends "base.html" %}
+
+{% block title %}Vector Search - Open..{% endblock %}
+
+{% block content %}
+<div class="card">
     <h1>Vector Search</h1>
     <form method="POST">
         <input type="text" name="search_query" placeholder="Enter search terms" value="{{ search_query or '' }}" required>
@@ -35,5 +35,10 @@
             {% endfor %}
         </ul>
     {% endif %}
-</body>
-</html>
+</div>
+
+<div class="mt-4">
+    <a href="{{ url_for('view_repositories') }}" class="btn btn-secondary">Back to Repositories</a>
+</div>
+{% endblock %}
+
