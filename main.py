@@ -316,24 +316,72 @@ def logout():
 @app.route('/profile', methods=["GET", "POST"])
 @login_required
 def profile():
+    db = get_db()
+    dbase = FDataBase(db)
+
+    # Fetch the current user's data
+    user = dbase.getUserByID(current_user.get_id())
+
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for('logout'))
+
     if request.method == "POST":
-        file = request.files.get('file')
-        if file:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
+        # Handle profile update form
+        if 'update_profile' in request.form:
+            # Get updated form data
+            first_name = request.form.get('first_name', '').strip()
+            last_name = request.form.get('last_name', '').strip()
+            username = request.form.get('username', '').strip()
+            organization = request.form.get('organization', '').strip() or None
+            country = request.form.get('country', '').strip() or None
+            city = request.form.get('city', '').strip() or None
+            address = request.form.get('address', '').strip() or None
+            phone_number = request.form.get('phone_number', '').strip() or None
 
-            db = get_db()
-            db.execute("""
-            INSERT INTO uploads (user_id, filename, filepath, upload_time)
-            VALUES (?, ?, ?, ?)
-            """, (current_user.get_id(), filename, filepath, int(time.time())))
-            db.commit()
-            flash("File uploaded successfully", "success")
-        else:
-            flash("No file selected", "error")
+            # Validation
+            if not first_name or not last_name or not username:
+                flash("First name, last name, and username are required.", "error")
+                return render_template("profile.html", user=user)
 
-    return render_template("profile.html")
+            if len(username) < 4:
+                flash("Username must be at least 4 characters long.", "error")
+                return render_template("profile.html", user=user)
+
+            # Check if the username is already taken by another user
+            existing_user = db.execute("""
+                SELECT id FROM users WHERE username = ? AND id != ?
+            """, (username, current_user.get_id())).fetchone()
+            if existing_user:
+                flash("Username is already taken by another user.", "error")
+                return render_template("profile.html", user=user)
+
+            # Update the user's data in the database
+            try:
+                db.execute("""
+                    UPDATE users
+                    SET first_name = ?, last_name = ?, username = ?, organization = ?, country = ?, city = ?, address = ?, phone_number = ?
+                    WHERE id = ?
+                """, (
+                    first_name, last_name, username, organization, country, city, address, phone_number, current_user.get_id()
+                ))
+                db.commit()
+                flash("Profile updated successfully!", "success")
+            except sqlite3.Error as e:
+                flash(f"Error updating profile: {e}", "error")
+
+            # Fetch updated user data for display
+            user = dbase.getUserByID(current_user.get_id())
+
+        # Handle vector search form
+        elif 'vector_search' in request.form:
+            search_query = request.form.get('search_query', '').strip()
+            if search_query:
+                return redirect(url_for('vector_search', query=search_query))
+
+    return render_template("profile.html", user=user)
+
+
  
 @app.route('/create_repo', methods=["GET", "POST"])
 @login_required
@@ -1003,42 +1051,37 @@ def view_file(username, repo_name, file_id):
                            highlighted_code=highlighted_code, 
                            author=username)
 
-
-
-
 @app.route('/vector_search', methods=["GET", "POST"])
 @login_required
 def vector_search():
-    if request.method == "POST":
-        search_query = request.form.get('search_query', '').strip()
-        if not search_query:
-            flash("Please enter a search query.", "error")
-            return redirect(url_for('vector_search'))
-        
-        db = get_db()
-        similar_repo_ids = vector_search_repos(db, search_query, k=5)
-        
-        if not similar_repo_ids:
-            flash("No similar repositories found.", "info")
-            return render_template("vector_search.html", repositories=[])
-        
-        # Fetch repository details
-        placeholders = ','.join(['?'] * len(similar_repo_ids))
-        query = f"""
-            SELECT r.*, u.username as author
-            FROM repositories r
-            JOIN users u ON r.user_id = u.id
-            WHERE r.repository_id IN ({placeholders}) AND r.is_open = 1
-        """
-        repos = db.execute(query, similar_repo_ids).fetchall()
-        
-        # Optionally, order repos based on similarity
-        # Assuming `similar_repo_ids` is ordered by similarity
-        repos_ordered = sorted(repos, key=lambda x: similar_repo_ids.index(x['repository_id']))
-        
-        return render_template("vector_search.html", repositories=repos_ordered, search_query=search_query)
-    
-    return render_template("vector_search.html")
+    query = request.args.get('query', '').strip()
+
+    if not query:
+        flash("Search query cannot be empty.", "error")
+        return render_template("vector_search.html", repositories=[])
+
+    db = get_db()
+    similar_repo_ids = vector_search_repos(db, query, k=5)
+
+    if not similar_repo_ids:
+        flash("No similar repositories found.", "info")
+        return render_template("vector_search.html", repositories=[])
+
+    # Fetch repository details
+    placeholders = ','.join(['?'] * len(similar_repo_ids))
+    query = f"""
+        SELECT r.*, u.username as author
+        FROM repositories r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.repository_id IN ({placeholders}) AND r.is_open = 1
+    """
+    repos = db.execute(query, similar_repo_ids).fetchall()
+
+    # Optionally, order repos based on similarity
+    repos_ordered = sorted(repos, key=lambda x: similar_repo_ids.index(x['repository_id']))
+
+    return render_template("vector_search.html", repositories=repos_ordered)
+
 
 @app.route('/user/profile/<string:username>', methods=["GET"])
 @login_required
