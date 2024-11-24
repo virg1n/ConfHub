@@ -37,7 +37,9 @@
                     {% for file in files %}
                         <li class="list-group-item d-flex justify-content-between align-items-center">
                             <!-- Clickable file name to view code -->
-                            <a href="{{ url_for('view_file', repo_id=repo.repository_id, file_id=file.id) }}">{{ file.filename }}</a>
+                            <!-- Make the file name clickable -->
+                            <a href="{{ url_for('view_file', username=author, repo_name=repo.name, file_id=file.id) }}">{{ file.filename }}</a>
+
                             
                             <div>
                                 <!-- Download Button -->

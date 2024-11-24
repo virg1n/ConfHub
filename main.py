@@ -943,56 +943,50 @@ def download_description(repo_id):
         flash("Description is empty.", "warning")
         return redirect(url_for('view_repository', author=db.execute("SELECT name FROM users WHERE id = ?", (repo['user_id'],)).fetchone()['name'], repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
 
-@app.route('/view_file/<int:repo_id>/<int:file_id>', methods=["GET"])
+@app.route('/repo/<string:username>/<string:repo_name>/<int:file_id>', methods=["GET"])
 @login_required
-def view_file(repo_id, file_id):
+def view_file(username, repo_name, file_id):
     db = get_db()
 
-    # Fetch the file details
-    file = db.execute("""
-        SELECT * FROM uploads WHERE id = ? AND repository_id = ?
-    """, (file_id, repo_id)).fetchone()
+    # Fetch the user by username
+    user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for('view_repositories'))
 
-    if not file:
-        flash("File not found.", "error")
-        return redirect(url_for('view_repository', author=db.execute(
-            "SELECT username FROM users WHERE id = (SELECT user_id FROM repositories WHERE repository_id = ?)", 
-            (repo_id,)
-        ).fetchone()['username'], 
-        repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
-
-    # Check repository access permissions
-    repo = db.execute("SELECT * FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()
+    # Fetch the repository by user_id and repo_name
+    repo = db.execute("""
+        SELECT * FROM repositories WHERE user_id = ? AND name = ?
+    """, (user['id'], repo_name)).fetchone()
     if not repo:
         flash("Repository not found.", "error")
         return redirect(url_for('view_repositories'))
 
+    # Fetch the file by repository_id and file_id
+    file = db.execute("""
+        SELECT * FROM uploads WHERE id = ? AND repository_id = ?
+    """, (file_id, repo['repository_id'])).fetchone()
+    if not file:
+        flash("File not found.", "error")
+        return redirect(url_for('view_repository', author=username, repo_name=repo_name))
+
+    # Check access permissions
     if not repo['is_open'] and int(repo['user_id']) != int(current_user.get_id()):
         flash("You do not have permission to access this file.", "error")
         return redirect(url_for('view_repositories'))
 
+    # Read the file content
     filepath = file['filepath']
     if not os.path.exists(filepath):
         flash("File not found on the server.", "error")
-        return redirect(url_for('view_repository', author=db.execute(
-            "SELECT username FROM users WHERE id = (SELECT user_id FROM repositories WHERE repository_id = ?)", 
-            (repo_id,)
-        ).fetchone()['username'], 
-        repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
-    
-    author=db.execute(
-            "SELECT username FROM users WHERE id = (SELECT user_id FROM repositories WHERE repository_id = ?)", 
-            (repo_id,)
-        ).fetchone()['username']
-    
+        return redirect(url_for('view_repository', author=username, repo_name=repo_name))
+
     try:
-        # Read the file content
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
     except Exception as e:
         flash(f"Error reading file: {e}", "error")
-        return redirect(url_for('view_repository', author=author, 
-        repo_name=db.execute("SELECT name FROM repositories WHERE repository_id = ?", (repo_id,)).fetchone()['name']))
+        return redirect(url_for('view_repository', author=username, repo_name=repo_name))
 
     # Syntax highlighting
     try:
@@ -1006,8 +1000,9 @@ def view_file(repo_id, file_id):
     return render_template("view_file.html", 
                            file=file, 
                            repo=repo, 
-                           highlighted_code=highlighted_code,
-                           author=author)
+                           highlighted_code=highlighted_code, 
+                           author=username)
+
 
 
 
