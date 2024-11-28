@@ -40,7 +40,7 @@ app.config['DATABASE'] = os.path.join(app.root_path, 'database.db')
 # app.config['CONFIGS_DATABASE'] = os.path.join(app.root_path, 'configs.db')
 app.config['SECRET_KEY'] = 'SECRET'
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'uploads')
-app.config['DIAGRAM_FOLDER'] = os.path.join(app.root_path, 'diagrams')
+app.config['DIAGRAM_FOLDER'] = os.path.join(app.root_path, 'static/diagrams')
 os.makedirs(app.config['DIAGRAM_FOLDER'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.app_context()
@@ -110,10 +110,10 @@ class FDataBase:
         try:
             self.__cur.execute("SELECT * FROM users WHERE username = ? LIMIT 1", (name,))
             user = self.__cur.fetchone()
-            if user:
-                print(f"User found: {user['username']} (ID: {user['id']})")
-            else:
-                print(f"No user found with username: {name}")
+            # if user:
+                # print(f"User found: {user['username']} (ID: {user['id']})")
+            # else:
+            #     print(f"No user found with username: {name}")
             return user
         except sqlite3.Error as e:
             print("Error retrieving user by username from DB: " + str(e))
@@ -519,7 +519,7 @@ def create_repo():
                 flash("Repository created but no files to generate description.", "warning")
 
             if final_description:
-                embedding = description_to_embedding(final_description)
+                embedding = description_to_embedding(str(repo_name) + str(final_description))
                 embedding_blob = pickle.dumps(embedding)
                 db.execute("""
                     UPDATE repositories SET vector = ? WHERE repository_id = ?
@@ -564,7 +564,7 @@ def create_repo():
 
 
             if description:
-                embedding = description_to_embedding(description)
+                embedding = description_to_embedding(str(repo_name) + str(description))
                 embedding_blob = pickle.dumps(embedding)
                 db.execute("""
                     UPDATE repositories SET vector = ? WHERE repository_id = ?

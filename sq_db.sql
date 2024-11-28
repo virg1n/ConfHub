@@ -1,11 +1,3 @@
--- CREATE TABLE users (
---     id INTEGER PRIMARY KEY AUTOINCREMENT,
---     name TEXT NOT NULL,
---     email TEXT NOT NULL UNIQUE,
---     psw TEXT NOT NULL,
---     created_at INTEGER NOT NULL
--- );
--- Create users table
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     first_name TEXT NOT NULL,
@@ -18,7 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
     phone_number TEXT,
     email TEXT NOT NULL UNIQUE,
     psw TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    is_verified INTEGER DEFAULT 0  -- 0 = Not Verified, 1 = Verified
 );
 
 
