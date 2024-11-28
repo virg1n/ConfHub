@@ -1132,29 +1132,6 @@ def vector_search():
     return render_template("vector_search.html", repositories=[])
 
 
-# @app.route('/vector_search', methods=["GET", "POST"])
-# @login_required
-# def vector_search(k=5):
-#     try:
-#         # Make a POST request to the vector search microservice
-#         query = request.args.get('query', '').strip()
-#         response = requests.post(
-#             VECTOR_SEARCH_URL,
-#             json={"query": query, "k": k}
-#         )
-#         db = get_db()
-#         if response.status_code == 200:
-#             data = response.json()
-#             repos_ordered = data.get("similar_repo_ids", [])
-#         else:
-#             print(f"Error in vector search: {response.json()}")
-#             return []
-#     except Exception as e:
-#         print(f"Error connecting to vector search service: {e}")
-#         return []
-#     return render_template("vector_search.html", repositories=repos_ordered)
-
-
 @app.route('/user/profile/<string:username>', methods=["GET"])
 @login_required
 def user_profile(username):
