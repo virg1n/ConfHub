@@ -1,11 +1,10 @@
-# VctSrch.py
 import pickle
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-# Initialize the model once to avoid reloading it multiple times
-model = SentenceTransformer("dunzhang/stella_en_400M_v5", trust_remote_code=True)
+# Load the model globally at module level
+MODEL = SentenceTransformer("dunzhang/stella_en_400M_v5", trust_remote_code=True)
 
 def vector_search_repos(db, query, k=5):
     repository_ids = []
@@ -30,7 +29,7 @@ def vector_search_repos(db, query, k=5):
     index = faiss.IndexFlatL2(dimension)
     index.add(vectors)
 
-    query_vector = model.encode([query])[0].astype('float32')
+    query_vector = MODEL.encode([query])[0].astype('float32')
 
     distances, indices = index.search(np.array([query_vector]), k)
 
@@ -42,5 +41,6 @@ def vector_search_repos(db, query, k=5):
     return similar_repositories
 
 def description_to_embedding(description):
-    description_vector = model.encode([description])[0]
+    # Use the global model instance
+    description_vector = MODEL.encode([description])[0]
     return description_vector

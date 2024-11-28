@@ -19,15 +19,19 @@ from pygments.lexers import get_lexer_for_filename, TextLexer
 from pygments.formatters import HtmlFormatter
 import io
 import zipfile
+import requests
 
 
-from VctSrch import vector_search_repos, description_to_embedding
+# from VctSrch import vector_search_repos, description_to_embedding
 
 load_dotenv()
 
 client = OpenAI(
     api_key=os.environ.get("API_KEY")
 )
+
+VECTOR_SEARCH_URL = "http://127.0.0.1:5001/vector_search"
+DESCRIPTION_TO_EMBEDDING_URL = "http://127.0.0.1:5001/description_to_embedding"
 
 ALLOWED_EXTENSIONS = {'.py', '.java', '.cpp', '.js', '.html', '.css', '.doc', '.cfg', '.txt'}
 
@@ -223,6 +227,45 @@ def generate_description(file_contents, current_description):
         return None
 
 
+def description_to_embedding(description):
+    """
+    Send a description to the vector search service to generate an embedding.
+    """
+    try:
+        response = requests.post(
+            DESCRIPTION_TO_EMBEDDING_URL,
+            json={"description": description}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return np.array(data["embedding"], dtype='float32')
+        else:
+            print(f"Error generating embedding: {response.json()}")
+            return None
+    except Exception as e:
+        print(f"Error connecting to embedding service: {e}")
+        return None
+    
+def vector_search_repos(db, query, k=5):
+    """
+    Send a search query to the vector search microservice and retrieve similar repository IDs.
+    """
+    try:
+        response = requests.post(
+            VECTOR_SEARCH_URL,
+            json={"query": query, "k": k}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("similar_repo_ids", [])
+        else:
+            print(f"Error in vector search: {response.json()}")
+            return []
+    except Exception as e:
+        print(f"Error connecting to vector search service: {e}")
+        return []
+
+
 
 
 @app.route("/", methods=["POST", "GET"])
@@ -400,7 +443,7 @@ def create_repo():
         # Check if repository name already exists for the user
         db = get_db()
         existing_repo = db.execute("""
-            SELECT * FROM repositories WHERE user_id = ? AND name = ?
+            SELECT * FROM repositories WHERE user_id = ? AND LOWER(name) = LOWER(?)
         """, (current_user.get_id(), repo_name)).fetchone()
 
         if existing_repo:
@@ -421,7 +464,6 @@ def create_repo():
         # Placeholder for description; will be updated if AI is used
         final_description = description
         is_description_ai_generated = 0
-
         if use_ai:
             # Temporarily insert the repository without description to get repo_id
             db.execute("""
@@ -520,6 +562,7 @@ def create_repo():
                     """, (current_user.get_id(), repo_id, filename, filepath, int(time.time())))
             db.commit()
 
+
             if description:
                 embedding = description_to_embedding(description)
                 embedding_blob = pickle.dumps(embedding)
@@ -527,9 +570,16 @@ def create_repo():
                     UPDATE repositories SET vector = ? WHERE repository_id = ?
                 """, (embedding_blob, repo_id))
                 db.commit()
-
             flash("Repository created successfully.", "success")
-
+            
+        try:
+            response = requests.post("http://127.0.0.1:5001/reload_vectors")
+            if response.status_code == 200:
+                print("Vector search index reloaded successfully.")
+            else:
+                print("Failed to reload vector search index.")
+        except Exception as e:
+            print(f"Error reloading vector search index: {e}")
         return redirect(url_for('view_repositories'))
 
     return render_template("create_repo.html")
@@ -557,12 +607,6 @@ def get_diagram(repo_id):
         flash("Diagram not found in the database.", "error")
 
     return redirect(url_for('view_repositories'))
-
-
-@app.route('/debug_current_user')
-@login_required
-def debug_current_user():
-    return f"Current user name: {current_user.name}"
 
 
 @app.route('/repo/<string:author>/<string:repo_name>', methods=["GET", "POST"])
@@ -1054,33 +1098,61 @@ def view_file(username, repo_name, file_id):
 @app.route('/vector_search', methods=["GET", "POST"])
 @login_required
 def vector_search():
-    query = request.args.get('query', '').strip()
+    if request.method == "POST":
+        # Retrieve 'search_query' from POST data
+        search_query = request.form.get('search_query', '').strip()
+        
+        if not search_query:
+            flash("Search query cannot be empty.", "error")
+            return render_template("vector_search.html", repositories=[])
+        
+        db = get_db()
+        similar_repo_ids = vector_search_repos(db, search_query, k=5)
+        
+        if not similar_repo_ids:
+            flash("No similar repositories found.", "info")
+            return render_template("vector_search.html", repositories=[], search_query=search_query)
+        
+        # Fetch repository details
+        placeholders = ','.join(['?'] * len(similar_repo_ids))
+        query = f"""
+            SELECT r.*, u.username as author
+            FROM repositories r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.repository_id IN ({placeholders}) AND r.is_open = 1
+        """
+        repos = db.execute(query, similar_repo_ids).fetchall()
+        
+        # Optionally, order repos based on similarity
+        repos_ordered = sorted(repos, key=lambda x: similar_repo_ids.index(x['repository_id']))
+        
+        return render_template("vector_search.html", repositories=repos_ordered, search_query=search_query)
+    
+    # For GET requests, simply render the search form without results
+    return render_template("vector_search.html", repositories=[])
 
-    if not query:
-        flash("Search query cannot be empty.", "error")
-        return render_template("vector_search.html", repositories=[])
 
-    db = get_db()
-    similar_repo_ids = vector_search_repos(db, query, k=5)
-
-    if not similar_repo_ids:
-        flash("No similar repositories found.", "info")
-        return render_template("vector_search.html", repositories=[])
-
-    # Fetch repository details
-    placeholders = ','.join(['?'] * len(similar_repo_ids))
-    query = f"""
-        SELECT r.*, u.username as author
-        FROM repositories r
-        JOIN users u ON r.user_id = u.id
-        WHERE r.repository_id IN ({placeholders}) AND r.is_open = 1
-    """
-    repos = db.execute(query, similar_repo_ids).fetchall()
-
-    # Optionally, order repos based on similarity
-    repos_ordered = sorted(repos, key=lambda x: similar_repo_ids.index(x['repository_id']))
-
-    return render_template("vector_search.html", repositories=repos_ordered)
+# @app.route('/vector_search', methods=["GET", "POST"])
+# @login_required
+# def vector_search(k=5):
+#     try:
+#         # Make a POST request to the vector search microservice
+#         query = request.args.get('query', '').strip()
+#         response = requests.post(
+#             VECTOR_SEARCH_URL,
+#             json={"query": query, "k": k}
+#         )
+#         db = get_db()
+#         if response.status_code == 200:
+#             data = response.json()
+#             repos_ordered = data.get("similar_repo_ids", [])
+#         else:
+#             print(f"Error in vector search: {response.json()}")
+#             return []
+#     except Exception as e:
+#         print(f"Error connecting to vector search service: {e}")
+#         return []
+#     return render_template("vector_search.html", repositories=repos_ordered)
 
 
 @app.route('/user/profile/<string:username>', methods=["GET"])
@@ -1123,4 +1195,5 @@ if __name__ == "__main__":
     try:
         create_db()
     finally:
-        app.run(host='0.0.0.0', debug=True)
+        app.run(host='0.0.0.0', debug=True, use_reloader=False)
+
