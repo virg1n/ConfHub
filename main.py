@@ -1151,6 +1151,7 @@ def all_repositories():
         return jsonify(repositories=repos_with_descriptions)
 
     # For normal requests, render the template
+    repos_with_descriptions = repos_with_descriptions[:20]
     return render_template("all_repositories.html", repositories=repos_with_descriptions, search_query=search_query)
 
 
