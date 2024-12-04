@@ -1,7 +1,7 @@
 <!-- templates/all_repositories.html -->
 {% extends "base.html" %}
 
-{% block title %}All Repositories - Open..{% endblock %}
+{% block title %}All Repositories{% endblock %}
 
 {% block content %}
 <h2 class="mb-4">All Repositories</h2>
@@ -20,6 +20,7 @@
                 <th scope="col">Author</th>
                 <th scope="col">Created Date</th>
                 <th scope="col">Description</th>
+                <th scope="col">Likes</th>
                 <th scope="col">View</th>
             </tr>
         </thead>
@@ -32,26 +33,43 @@
                             {{ repo.author_name }}
                         </a>
                     </td>
-                    
                     <td>{{ repo.created_time | datetimeformat }}</td>
                     <td class="description-cell">{{ repo.description }}</td>
-                    <td><a href="{{ url_for('view_repository', author=repo.username, repo_name=repo.repo_name) }}" class="btn btn-primary btn-sm">View</a></td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <form action="{{ url_for('like_repository', repo_id=repo.repo_id) }}" method="POST" class="me-2">
+                                {% if repo.has_liked %}
+                                    <button type="submit" class="btn btn-danger btn-sm">
+                                        <i class="bi bi-heart-fill"></i> Unlike
+                                    </button>
+                                {% else %}
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                                        <i class="bi bi-heart"></i> Like
+                                    </button>
+                                {% endif %}
+                            </form>
+                            <!-- Like Count -->
+                            <span class="ms-2">{{ repo.like_count }} {{ 'Like' if repo.like_count == 1 else 'Likes' }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('view_repository', author=repo.username, repo_name=repo.repo_name) }}" class="btn btn-primary btn-sm">View</a>
+                    </td>
                 </tr>
             {% else %}
                 <tr>
-                    <td colspan="5" class="text-center">No repositories found.</td>
+                    <td colspan="6" class="text-center">No repositories found.</td>
                 </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
-<!-- Pagination (Optional) -->
-<!-- You can implement pagination here if you have many repositories -->
 
 <div class="mt-4">
     <a href="{{ url_for('create_repo') }}" class="btn btn-success">Create Repository</a>
     <a href="{{ url_for('view_repositories') }}" class="btn btn-info">My Repositories</a>
+    <a href="{{ url_for('liked_repositories') }}" class="btn btn-warning">Liked Repositories</a>
     <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
 </div>
 {% endblock %}
@@ -77,21 +95,88 @@ function searchRepositories() {
 
         if (data.repositories.length > 0) {
             data.repositories.forEach(repo => {
+                // Create table row
                 const row = document.createElement('tr');
 
-                row.innerHTML = `
-                    <td>${repo.repo_name}</td>
-                    <td>${repo.author_name}</td>
-                    <td>${new Date(repo.created_time * 1000).toLocaleString()}</td>
-                    <td class="description-cell">${repo.description}</td>
-                    <td><a href="/repo/${encodeURIComponent(repo.author_name)}/${encodeURIComponent(repo.repo_name)}" class="btn btn-primary btn-sm">View</a></td>
-                `;
+                // Repository Name
+                const nameCell = document.createElement('td');
+                nameCell.textContent = repo.repo_name;
+                row.appendChild(nameCell);
 
+                // Author
+                const authorCell = document.createElement('td');
+                const authorLink = document.createElement('a');
+                authorLink.href = `/user/profile/${encodeURIComponent(repo.username)}`;
+                authorLink.textContent = repo.author_name;
+                authorCell.appendChild(authorLink);
+                row.appendChild(authorCell);
+
+                // Created Date
+                const dateCell = document.createElement('td');
+                const createdDate = new Date(repo.created_time * 1000);
+                dateCell.textContent = createdDate.toLocaleString();
+                row.appendChild(dateCell);
+
+                // Description
+                const descCell = document.createElement('td');
+                descCell.classList.add('description-cell');
+                descCell.textContent = repo.description;
+                row.appendChild(descCell);
+
+                // Likes
+                const likesCell = document.createElement('td');
+                const likesDiv = document.createElement('div');
+                likesDiv.classList.add('d-flex', 'align-items-center');
+
+                // Like/Unlike Form
+                const form = document.createElement('form');
+                form.action = `/like_repository/${repo.repo_id}`;
+                form.method = 'POST';
+                form.classList.add('me-2');
+
+                // Like/Unlike Button
+                const button = document.createElement('button');
+                button.type = 'submit';
+                button.classList.add('btn', repo.has_liked ? 'btn-danger' : 'btn-outline-danger', 'btn-sm');
+
+                // Icon and Text
+                const icon = document.createElement('i');
+                icon.classList.add('bi', repo.has_liked ? 'bi-heart-fill' : 'bi-heart');
+                button.appendChild(icon);
+
+                const buttonText = document.createTextNode(` ${repo.has_liked ? 'Unlike' : 'Like'}`);
+                button.appendChild(buttonText);
+
+                form.appendChild(button);
+                likesDiv.appendChild(form);
+
+                // Like Count
+                const likeCountSpan = document.createElement('span');
+                likeCountSpan.textContent = `${repo.like_count} ${repo.like_count === 1 ? 'Like' : 'Likes'}`;
+                likesDiv.appendChild(likeCountSpan);
+
+                likesCell.appendChild(likesDiv);
+                row.appendChild(likesCell);
+
+                // View Button
+                const viewCell = document.createElement('td');
+                const viewButton = document.createElement('a');
+                viewButton.href = `/repo/${encodeURIComponent(repo.username)}/${encodeURIComponent(repo.repo_name)}`;
+                viewButton.classList.add('btn', 'btn-primary', 'btn-sm');
+                viewButton.textContent = 'View';
+                viewCell.appendChild(viewButton);
+                row.appendChild(viewCell);
+
+                // Append row to table body
                 tableBody.appendChild(row);
             });
         } else {
             const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="5" class="text-center">No repositories found.</td>`;
+            const noDataCell = document.createElement('td');
+            noDataCell.colSpan = 6;
+            noDataCell.classList.add('text-center');
+            noDataCell.textContent = 'No repositories found.';
+            row.appendChild(noDataCell);
             tableBody.appendChild(row);
         }
     })

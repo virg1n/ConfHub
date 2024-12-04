@@ -10,6 +10,7 @@ from UserLogin import UserLogin
 import time
 from datetime import datetime
 from flask import jsonify
+# from flask_wtf.csrf import CSRFProtect
 from openai import OpenAI
 import pickle
 import faiss
@@ -44,6 +45,9 @@ app.config['DIAGRAM_FOLDER'] = os.path.join(app.root_path, 'static/diagrams')
 os.makedirs(app.config['DIAGRAM_FOLDER'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.app_context()
+
+# csrf = CSRFProtect(app)
+
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -148,6 +152,70 @@ class FDataBase:
         except sqlite3.Error as e:
             print("Error adding user to DB: " + str(e))
             return False
+    
+    def like_repository(self, user_id, repo_id):
+        try:
+            current_time = int(time.time())
+            self.__cur.execute("""
+                INSERT INTO likes (user_id, repository_id, liked_at)
+                VALUES (?, ?, ?)
+            """, (user_id, repo_id, current_time))
+            self.__db.commit()
+            return True
+        except sqlite3.IntegrityError:
+            # The like already exists
+            return False
+        except sqlite3.Error as e:
+            print("Error liking repository: " + str(e))
+            return False
+
+    def unlike_repository(self, user_id, repo_id):
+        try:
+            self.__cur.execute("""
+                DELETE FROM likes
+                WHERE user_id = ? AND repository_id = ?
+            """, (user_id, repo_id))
+            self.__db.commit()
+            return self.__cur.rowcount > 0
+        except sqlite3.Error as e:
+            print("Error unliking repository: " + str(e))
+            return False
+
+    def get_like_count(self, repo_id):
+        try:
+            self.__cur.execute("""
+                SELECT COUNT(*) as count FROM likes WHERE repository_id = ?
+            """, (repo_id,))
+            result = self.__cur.fetchone()
+            return result['count'] if result else 0
+        except sqlite3.Error as e:
+            print("Error fetching like count: " + str(e))
+            return 0
+
+    def has_liked(self, user_id, repo_id):
+        try:
+            self.__cur.execute("""
+                SELECT 1 FROM likes WHERE user_id = ? AND repository_id = ?
+            """, (user_id, repo_id))
+            return self.__cur.fetchone() is not None
+        except sqlite3.Error as e:
+            print("Error checking like status: " + str(e))
+            return False
+
+    def get_liked_repositories(self, user_id):
+        try:
+            self.__cur.execute("""
+                SELECT r.*, u.username as author
+                FROM repositories r
+                JOIN likes l ON r.repository_id = l.repository_id
+                JOIN users u ON r.user_id = u.id
+                WHERE l.user_id = ?
+                ORDER BY l.liked_at DESC
+            """, (user_id,))
+            return self.__cur.fetchall()
+        except sqlite3.Error as e:
+            print("Error fetching liked repositories: " + str(e))
+            return []
 
 
 @login_manager.user_loader
@@ -736,7 +804,14 @@ def view_repository(author, repo_name):
 
         return redirect(url_for('view_repository', author=author, repo_name=repo_name))
 
-    # Fetch all files in the repository
+
+    like_count = dbase.get_like_count(repo['repository_id'])
+    has_liked = dbase.has_liked(current_user.get_id(), repo['repository_id'])
+
+    # Fetch all files, description, diagram as before
+    files = db.execute("""
+        SELECT * FROM uploads WHERE repository_id = ?
+    """, (repo['repository_id'],)).fetchall()
     files = db.execute("""
         SELECT * FROM uploads WHERE repository_id = ?
     """, (repo['repository_id'],)).fetchall()
@@ -747,7 +822,16 @@ def view_repository(author, repo_name):
     # Fetch the diagram path
     diagram = repo['diagram'] if repo['diagram'] and os.path.exists(repo['diagram']) else None
 
-    return render_template("view_repository.html", repo=repo, files=files, description=description, author=author, diagram=diagram)
+    return render_template(
+        "view_repository.html",
+        repo=repo,
+        files=files,
+        description=description,
+        author=author,
+        diagram=diagram,
+        like_count=like_count,
+        has_liked=has_liked
+    )
 
 @app.route('/repo/<int:repo_id>/file/<int:file_id>')
 @login_required
@@ -889,6 +973,60 @@ def delete_file(file_id):
     flash("File deleted successfully.", "success")
     return redirect(url_for('view_repository', author=author_name, repo_name=repo_name))
 
+@app.route('/delete_repository/<int:repo_id>', methods=['POST'])
+@login_required
+def delete_repository(repo_id):
+    db = get_db()
+    dbase = FDataBase(db)
+
+    # Fetch the repository to verify ownership
+    repo = db.execute("""
+        SELECT * FROM repositories WHERE repository_id = ?
+    """, (repo_id,)).fetchone()
+
+    if not repo:
+        flash("Repository not found.", "error")
+        return redirect(url_for('view_repositories'))
+
+    # print(repo['user_id'])
+    # print(current_user.get_id())
+    # print(str(repo['user_id']) == str(current_user.get_id()))
+    if str(repo['user_id']) != str(current_user.get_id()):
+        flash("You do not have permission to delete this repository.", "error")
+        return redirect(url_for('view_repositories'))
+
+    # Paths to delete
+    repo_dir = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(repo['name']))
+    diagram_path = repo['diagram']
+
+    try:
+        # Delete associated files from the filesystem
+        if os.path.exists(repo_dir):
+            # Remove the entire repository directory and its contents
+            import shutil
+            shutil.rmtree(repo_dir)
+            print(f"Deleted repository directory: {repo_dir}")
+        else:
+            print(f"Repository directory not found: {repo_dir}")
+
+        if diagram_path and os.path.exists(diagram_path):
+            os.remove(diagram_path)
+            print(f"Deleted diagram file: {diagram_path}")
+        else:
+            print(f"Diagram file not found or not provided for repository ID {repo_id}.")
+
+        # Delete the repository from the database
+        db.execute("""
+            DELETE FROM repositories WHERE repository_id = ?
+        """, (repo_id,))
+        db.commit()
+
+        flash("Repository deleted successfully.", "success")
+    except Exception as e:
+        flash(f"An error occurred while deleting the repository: {e}", "error")
+        return redirect(url_for('view_repositories'))
+
+    return redirect(url_for('view_repositories'))
 
 
 @app.route('/view_repositories')
@@ -897,9 +1035,11 @@ def view_repositories():
     db = get_db()
     cur = db.cursor()
 
-    # Fetch open repositories and user's own repositories
+    # Fetch user's repositories
     cur.execute("SELECT * FROM repositories WHERE user_id = ?", (current_user.get_id(),))
     repositories = cur.fetchall()
+    repositories = [dict(repo) for repo in repositories]  # Convert to mutable dictionaries
+    repositories.reverse()
 
     # Extract repository IDs
     repo_ids = [repo['repository_id'] for repo in repositories]
@@ -919,7 +1059,40 @@ def view_repositories():
             files_by_repo[repo_id] = []
         files_by_repo[repo_id].append(file)
 
+    dbase = FDataBase(db)
+    for repo in repositories:
+        repo['like_count'] = dbase.get_like_count(repo['repository_id'])
+        repo['has_liked'] = dbase.has_liked(current_user.get_id(), repo['repository_id'])
+        
+
     return render_template("view_repositories.html", repositories=repositories, files_by_repo=files_by_repo)
+
+@app.route('/liked_repositories')
+@login_required
+def liked_repositories():
+    db = get_db()
+    dbase = FDataBase(db)
+
+    # Fetch liked repositories
+    liked_repos = dbase.get_liked_repositories(current_user.get_id())
+
+    # Optionally, fetch like counts for each repository
+    repositories = []
+    for repo in liked_repos:
+        repo_like_count = dbase.get_like_count(repo['repository_id'])
+        repositories.append({
+            'repository_id': repo['repository_id'],
+            'name': repo['name'],
+            'description': repo['description'][:200],  # Truncate if necessary
+            'created_time': repo['created_time'],
+            'is_open': repo['is_open'],
+            'author': repo['author'],
+            'like_count': repo_like_count
+        })
+
+    return render_template("liked_repositories.html", repositories=repositories)
+
+
 
 @app.route('/all_repositories', methods=["GET"])
 @login_required
@@ -949,6 +1122,7 @@ def all_repositories():
 
     # Process descriptions and filter based on search query
     repos_with_descriptions = []
+    dbase = FDataBase(db)
     for repo in repositories:
         description = repo['description'] if repo['description'] else ""
 
@@ -957,13 +1131,19 @@ def all_repositories():
             search_query.lower() in description.lower() or 
             search_query.lower() in repo['repo_name'].lower() or 
             search_query.lower() in repo['author_name'].lower()):
+            # Fetch like count and like status
+            like_count = dbase.get_like_count(repo['repository_id'])
+            has_liked = dbase.has_liked(current_user_id, repo['repository_id'])
+            
             repos_with_descriptions.append({
                 'repo_id': repo['repository_id'],
                 'repo_name': repo['repo_name'],
                 'created_time': repo['created_time'],
                 'author_name': repo['author_name'],
-                'description': description[:200],
                 'username': repo['username'],
+                'description': description[:200],
+                'like_count': like_count,
+                'has_liked': has_liked
             })
 
     # Check if the request is an AJAX request
@@ -1166,6 +1346,31 @@ def user_profile(username):
         },
         repositories=repositories
     )
+
+
+@app.route('/like_repository/<int:repo_id>', methods=['POST'])
+@login_required
+def like_repository(repo_id):
+    db = get_db()
+    dbase = FDataBase(db)
+
+    if dbase.has_liked(current_user.get_id(), repo_id):
+        dbase.unlike_repository(current_user.get_id(), repo_id)
+        has_liked = False
+    else:
+        dbase.like_repository(current_user.get_id(), repo_id)
+        has_liked = True
+
+    # Get the updated like count
+    like_count = dbase.get_like_count(repo_id)
+
+    # If it's an AJAX request, return a JSON response
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'status': 'success', 'has_liked': has_liked, 'like_count': like_count})
+
+    # Otherwise, redirect back to the page
+    return redirect(request.referrer or url_for('all_repositories'))
+
 
 
 if __name__ == "__main__":

@@ -42,3 +42,14 @@ CREATE TABLE IF NOT EXISTS uploads (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(repository_id) REFERENCES repositories(repository_id) ON DELETE CASCADE
 );
+
+
+-- Create likes table to track user likes on repositories
+CREATE TABLE IF NOT EXISTS likes (
+    user_id INTEGER NOT NULL,
+    repository_id INTEGER NOT NULL,
+    liked_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, repository_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (repository_id) REFERENCES repositories(repository_id) ON DELETE CASCADE
+);
