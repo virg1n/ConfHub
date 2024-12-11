@@ -22,6 +22,7 @@ import io
 import zipfile
 import requests
 
+DELETE_REPOS_LOCALLY = False
 
 # from VctSrch import vector_search_repos, description_to_embedding
 
@@ -944,19 +945,20 @@ def delete_file(file_id):
         flash("You do not have permission to delete files from this repository.", "error")
         return redirect(url_for('view_repositories'))
 
-    cursor = db.execute("SELECT name FROM users WHERE id = ?", (author_id,))
+    cursor = db.execute("SELECT username FROM users WHERE id = ?", (author_id,))
     author = cursor.fetchone()
 
     if not author:
         flash("Author not found.", "error")
         return redirect(url_for('view_repositories'))
 
-    author_name = author['name']
+    author_name = author['username']
     repo_name = repo['name']
 
     try:
         if os.path.exists(file['filepath']):
-            os.remove(file['filepath'])
+            if DELETE_REPOS_LOCALLY:
+                os.remove(file['filepath'])
         else:
             flash("File not found on the server.", "warning")
     except Exception as e:
@@ -1004,7 +1006,8 @@ def delete_repository(repo_id):
         if os.path.exists(repo_dir):
             # Remove the entire repository directory and its contents
             import shutil
-            shutil.rmtree(repo_dir)
+            if DELETE_REPOS_LOCALLY:
+                shutil.rmtree(repo_dir)
             print(f"Deleted repository directory: {repo_dir}")
         else:
             print(f"Repository directory not found: {repo_dir}")

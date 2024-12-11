@@ -2,5 +2,6 @@
 /uploads/
 /diagrams/
 /__pycache__/
+/static/diagrams/
 /test/
 *.db
