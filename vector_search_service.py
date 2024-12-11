@@ -16,11 +16,11 @@ app = Flask(__name__)
 
 # Configuration
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'database.db')  # Adjust path as needed
-MODEL_NAME = "dunzhang/stella_en_400M_v5"  # Ensure this model is compatible
+MODEL_NAME = "sentence-transformers/distilbert-base-nli-stsb-mean-tokens"  # CPU-compatible model
 EMBEDDING_DIMENSION = 768  # Adjust based on your model
 
 # Initialize SentenceTransformer model
-model = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
+model = SentenceTransformer(MODEL_NAME)
 
 # Initialize FAISS index
 index = None
@@ -50,6 +50,9 @@ def load_vectors_into_faiss():
     if vectors:
         vectors = np.array(vectors).astype('float32')
         dimension = vectors.shape[1]
+        if dimension != EMBEDDING_DIMENSION:
+            print(f"Dimension mismatch: Expected {EMBEDDING_DIMENSION}, but got {dimension}.")
+            return
         index = faiss.IndexFlatL2(dimension)
         index.add(vectors)
         print(f"FAISS index initialized with {len(repository_ids)} vectors.")
@@ -108,7 +111,7 @@ def description_to_embedding():
     }
     Returns JSON:
     {
-        "embedding": [0.1, 0.2, ..., 0.768]
+        "embedding": [0.1, 0.2, ..., 0.384]
     }
     """
     data = request.get_json()
