@@ -61,6 +61,7 @@
                 <th>Upload Time</th>
                 <th>Description</th>
                 <th>Download</th>
+                <th>Actions</th> <!-- New Column for Actions -->
             </tr>
         </thead>
         <tbody>
@@ -71,6 +72,11 @@
                 <td>{{ file.upload_time|datetimeformat('%Y-%m-%d %H:%M:%S') }}</td>
                 <td>{{ file.description or 'N/A' }}</td>
                 <td><a href="{{ url_for('download_file', file_id=file.id) }}">Download</a></td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin_delete_file', file_id=file.id, repo_id=repo.repository_id) }}"                    onsubmit="return confirm('Are you sure you want to delete this file? This action cannot be undone.');">
+                        <button type="submit" style="background-color: red; color: white;">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

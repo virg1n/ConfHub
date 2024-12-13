@@ -22,6 +22,7 @@ import io
 import zipfile
 import requests 
 import math
+from functools import wraps
 
 USERS_PER_PAGE = 20
 REPOS_PER_PAGE = 20
@@ -49,6 +50,15 @@ app.config['DIAGRAM_FOLDER'] = os.path.join(app.root_path, 'static/diagrams')
 os.makedirs(app.config['DIAGRAM_FOLDER'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.app_context()
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            flash("You need to be logged in as admin to access this page.", "error")
+            return redirect(url_for('admin_login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # csrf = CSRFProtect(app)
 
@@ -1470,6 +1480,7 @@ def admin_login():
 
 
 @app.route("/admin_page", methods=["GET"])
+@admin_required
 def admin_page():
     if not session.get('admin_logged_in'):
         flash("You need to be logged in as admin to access this page.", "error")
@@ -1577,6 +1588,7 @@ def admin_logout():
 
 # New Routes for Admin Viewing User and Repository Details
 @app.route('/admin/view_user/<int:user_id>', methods=['GET', 'POST'])
+@admin_required
 def admin_view_user(user_id):
     if not session.get('admin_logged_in'):
         flash("You need to be logged in as admin to access this page.", "error")
@@ -1654,8 +1666,8 @@ def admin_view_user(user_id):
     
     return render_template("admin_view_user.html", user=user, repositories=repositories)
 
-
 @app.route('/admin/view_repository/<int:repo_id>', methods=['GET', 'POST'])
+@admin_required
 def admin_view_repository(repo_id):
     if not session.get('admin_logged_in'):
         flash("You need to be logged in as admin to access this page.", "error")
@@ -1759,6 +1771,35 @@ def admin_view_repository(repo_id):
     
     return render_template("admin_view_repository.html", repo=repo, files=files, like_count=like_count)
 
+@app.route('/admin/delete_file/<int:file_id>', methods=['POST'])
+@admin_required
+def admin_delete_file(file_id):
+    repo_id = request.args.get('repo_id', type=int)
+    db = get_db()
+    try:
+        # Fetch file details
+        file = db.execute("SELECT * FROM uploads WHERE id = ?", (file_id,)).fetchone()
+        if not file:
+            flash("File not found.", "error")
+            return redirect(url_for('admin_view_repository', repo_id=repo_id))
+        
+        # Delete the file record from the database
+        db.execute("DELETE FROM uploads WHERE id = ?", (file_id,))
+        db.commit()
+        
+        # Delete the actual file from the filesystem
+        filepath = file['filepath']
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        
+        flash(f"File '{file['filename']}' deleted successfully.", "success")
+        
+    except sqlite3.Error as e:
+        flash(f"Error deleting file: {e}", "error")
+    except Exception as e:
+        flash(f"Unexpected error: {e}", "error")
+    
+    return redirect(url_for('admin_view_repository', repo_id=repo_id))
 
 if __name__ == "__main__":
     try:
