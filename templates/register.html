@@ -1,53 +1,152 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Your head content -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <!-- Include Bootstrap and Custom CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <h2>Register</h2>
-    <form method="POST" action="{{ url_for('register') }}">
-        <!-- Required Fields -->
-        <label for="first_name">First Name*</label>
-        <input type="text" name="first_name" id="first_name" required>
+    <!-- Navbar (optional) -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Register</a>
+        </div>
+    </nav>
 
-        <label for="last_name">Last Name*</label>
-        <input type="text" name="last_name" id="last_name" required>
+    <div class="container mt-4">
+        <h2 class="text-center mb-4">Create an Account</h2>
 
-        <label for="username">Username*</label>
-        <input type="text" name="username" id="username" required>
+        <form method="POST" action="{{ url_for('register') }}" class="card p-4" style="background-color: #1f1f1f; border-radius: 8px;">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="mb-4">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            {% endwith %}
 
-        <label for="email">Email*</label>
-        <input type="email" name="email" id="email" required>
+            <!-- Required Fields -->
+            <div class="mb-3">
+                <label for="first_name" class="form-label">First Name*</label>
+                <input type="text" class="form-control" name="first_name" id="first_name" required>
+            </div>
 
-        <label for="password">Password*</label>
-        <input type="password" name="password" id="password" required>
+            <div class="mb-3">
+                <label for="last_name" class="form-label">Last Name*</label>
+                <input type="text" class="form-control" name="last_name" id="last_name" required>
+            </div>
 
-        <!-- Optional Fields -->
-        <label for="organization">Organization</label>
-        <input type="text" name="organization" id="organization">
+            <div class="mb-3">
+                <label for="username" class="form-label">Username*</label>
+                <input type="text" class="form-control" name="username" id="username" required>
+            </div>
 
-        <label for="country">Country</label>
-        <input type="text" name="country" id="country">
+            <div class="mb-3">
+                <label for="email" class="form-label">Email*</label>
+                <input type="email" class="form-control" name="email" id="email" required>
+            </div>
 
-        <label for="city">City</label>
-        <input type="text" name="city" id="city">
+            <div class="mb-3">
+                <label for="password" class="form-label">Password*</label>
+                <input type="password" class="form-control" name="password" id="password" required>
+            </div>
 
-        <label for="address">Address</label>
-        <input type="text" name="address" id="address">
+            <!-- Optional Fields -->
+            <div class="mb-3">
+                <label for="organization" class="form-label">Organization</label>
+                <input type="text" class="form-control" name="organization" id="organization">
+            </div>
 
-        <label for="phone_number">Phone Number</label>
-        <input type="text" name="phone_number" id="phone_number">
+            <div class="mb-3">
+                <label for="country" class="form-label">Country</label>
+                <input type="text" class="form-control" name="country" id="country">
+            </div>
 
-        <button type="submit">Register</button>
-    </form>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <ul>
-          {% for category, message in messages %}
-            <li class="{{ category }}">{{ message }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+            <div class="mb-3">
+                <label for="city" class="form-label">City</label>
+                <input type="text" class="form-control" name="city" id="city">
+            </div>
+
+            <div class="mb-3">
+                <label for="address" class="form-label">Address</label>
+                <input type="text" class="form-control" name="address" id="address">
+            </div>
+
+            <div class="mb-3">
+                <label for="phone_number" class="form-label">Phone Number</label>
+                  <div class="input-group">
+                    <select name="country_code" class="form-select" style="max-width: 120px;">
+                      <option value="+1">+1 (USA)</option>
+                      <option value="+7">+7 (Russia)</option>
+                      <option value="+20">+20 (Egypt)</option>
+                      <option value="+27">+27 (South Africa)</option>
+                      <option value="+30">+30 (Greece)</option>
+                      <option value="+31">+31 (Netherlands)</option>
+                      <option value="+32">+32 (Belgium)</option>
+                      <option value="+33">+33 (France)</option>
+                      <option value="+34">+34 (Spain)</option>
+                      <option value="+36">+36 (Hungary)</option>
+                      <option value="+39">+39 (Italy)</option>
+                      <option value="+44">+44 (UK)</option>
+                      <option value="+46">+46 (Sweden)</option>
+                      <option value="+47">+47 (Norway)</option>
+                      <option value="+48">+48 (Poland)</option>
+                      <option value="+49">+49 (Germany)</option>
+                      <option value="+52">+52 (Mexico)</option>
+                      <option value="+55">+55 (Brazil)</option>
+                      <option value="+56">+56 (Chile)</option>
+                      <option value="+57">+57 (Colombia)</option>
+                      <option value="+61">+61 (Australia)</option>
+                      <option value="+62">+62 (Indonesia)</option>
+                      <option value="+63">+63 (Philippines)</option>
+                      <option value="+64">+64 (New Zealand)</option>
+                      <option value="+65">+65 (Singapore)</option>
+                      <option value="+66">+66 (Thailand)</option>
+                      <option value="+81">+81 (Japan)</option>
+                      <option value="+82">+82 (South Korea)</option>
+                      <option value="+86">+86 (China)</option>
+                      <option value="+91">+91 (India)</option>
+                      <option value="+94">+94 (Sri Lanka)</option>
+                      <option value="+95">+95 (Myanmar)</option>
+                      <option value="+351">+351 (Portugal)</option>
+                      <option value="+358">+358 (Finland)</option>
+                      <option value="+372">+372 (Estonia)</option>
+                      <option value="+374">+374 (Armenia)</option>
+                      <option value="+375">+375 (Belarus)</option>
+                      <option value="+385">+385 (Croatia)</option>
+                      <option value="+387">+387 (Bosnia and Herzegovina)</option>
+                      <option value="+420">+420 (Czech Republic)</option>
+                      <option value="+423">+423 (Liechtenstein)</option>
+                      <option value="+852">+852 (Hong Kong)</option>
+                      <option value="+880">+880 (Bangladesh)</option>
+                      <option value="+994">+994 (Azerbaijan)</option>
+                  </select>
+                  
+                    <input type="number" class="form-control" name="phone_number" id="phone_number" placeholder="Phone Number">
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary w-100">Register</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Footer (optional) -->
+    <footer class="text-center mt-4 text-muted">
+        Already have an account? <a href="{{ url_for('login') }}" class="text-decoration-none" style="color: #bb86fc;">Login</a>
+    </footer>
+
+    <!-- Bootstrap JS (with Popper) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

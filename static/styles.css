@@ -218,3 +218,63 @@ form .form-check-input:checked {
     background-color: #bb86fc;
     border-color: #bb86fc;
 }
+
+/* General Code Styling */
+.code-view {
+    background-color: #0d0d0d;
+    color: #dcdcdc;
+    border: 1px solid #333;
+    padding: 15px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.95rem;
+}
+
+/* Variables (apply black color) */
+.code-view .variable {
+    color: #000000; /* Black for variables */
+}
+
+/* Additional Syntax Highlighting */
+.code-view .keyword {
+    color: #569cd6; /* Keywords like `def`, `return` */
+}
+
+.code-view .string {
+    color: #d69d85; /* Strings */
+}
+
+.code-view .comment {
+    color: #6a9955; /* Comments */
+}
+
+.code-view .function-name {
+    color: #61afef; /* Function names */
+}
+
+.text-purple{
+    color:#bb86fc;
+}
+
+/* Additional styles for login page */
+.card {
+    background-color: #1f1f1f;
+    border: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.7);
+    border-radius: 12px;
+    padding: 20px;
+    color: #e0e0e0;
+}
+
+.card h2 {
+    color: #bb86fc;
+}
+
+.card a {
+    color: #bb86fc;
+}
+
+.card a:hover {
+    text-decoration: underline;
+}

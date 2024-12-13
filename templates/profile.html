@@ -32,6 +32,12 @@
                     <label for="email" class="form-label fw-bold">Email</label>
                     <input type="email" class="form-control" id="email" name="email" value="{{ user['email'] }}" readonly>
                 </div>
+                
+                <!-- Username -->
+                <div class="mb-3">
+                    <label for="username" class="form-label fw-bold">Username</label>
+                    <input type="text" class="form-control" id="username" name="username" value="{{ user['username'] }}" required readonly>
+                </div>
 
                 <!-- First Name -->
                 <div class="mb-3">
@@ -43,12 +49,6 @@
                 <div class="mb-3">
                     <label for="last_name" class="form-label fw-bold">Last Name</label>
                     <input type="text" class="form-control" id="last_name" name="last_name" value="{{ user['last_name'] }}" required>
-                </div>
-
-                <!-- Username -->
-                <div class="mb-3">
-                    <label for="username" class="form-label fw-bold">Username</label>
-                    <input type="text" class="form-control" id="username" name="username" value="{{ user['username'] }}" required>
                 </div>
 
                 <!-- Organization -->

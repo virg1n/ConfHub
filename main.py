@@ -437,7 +437,10 @@ def register():
         country = request.form.get('country', '').strip() or None
         city = request.form.get('city', '').strip() or None
         address = request.form.get('address', '').strip() or None
-        phone_number = request.form.get('phone_number', '').strip() or None
+
+        country_code = request.form.get('country_code', '').strip()
+        part_phone_number = request.form.get('phone_number', '').strip()
+        phone_number = f"{country_code} {part_phone_number}" if part_phone_number else None
 
         # Validate required fields
         if not first_name or not last_name or not username or not email or not password:
@@ -1387,11 +1390,14 @@ def user_profile(username):
         flash("User not found.", "error")
         return redirect(url_for('view_repositories'))
 
-    # Fetch the open repositories for this user
+    # Fetch the open repositories for this user, including like counts
     repositories = db.execute("""
-        SELECT r.name AS repo_name, r.description, r.created_time 
-        FROM repositories r 
+        SELECT r.name AS repo_name, r.description, r.created_time,
+               COUNT(l.user_id) AS likes
+        FROM repositories r
+        LEFT JOIN likes l ON r.repository_id = l.repository_id
         WHERE r.user_id = ? AND r.is_open = 1
+        GROUP BY r.repository_id, r.name, r.description, r.created_time
         ORDER BY r.created_time DESC
     """, (user['id'],)).fetchall()
 
@@ -1408,6 +1414,7 @@ def user_profile(username):
         },
         repositories=repositories
     )
+
 
 
 @app.route('/like_repository/<int:repo_id>', methods=['POST'])

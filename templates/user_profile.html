@@ -1,41 +1,79 @@
-{% extends "base.html" %}
+{% extends "base_new.html" %}
 
-{% block title %}Profile - Open..{% endblock %}
+{% block title %}{{ user.first_name }} {{ user.last_name }}'s Profile - Open..{% endblock %}
 
 {% block content %}
-<div class="card">
-    <h1>{{ user.first_name }} {{ user.last_name }}'s Profile</h1>
+<div class="container mt-4">
+    <!-- Author Profile Header -->  
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="">
+            <span class="text-purple"> 
+                <b>
+                    {{ user.first_name }}
+                </b>
+            </span>
+            <span class="text-purple">
+                <b>
+                    {{ user.last_name }}
+                </b>
+            </span>
+        </h1>
+        <!-- Toggle Button for Profile Details -->
+        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#profileDetails" aria-expanded="true" aria-controls="profileDetails">
+            Show Details
+        </button>
+    </div>
 
-    <h2>Details</h2>
-    <ul>
-        <li><strong>Organization:</strong> {{ user.organization or "N/A" }}</li>
-        <li><strong>Country:</strong> {{ user.country or "N/A" }}</li>
-        <li><strong>City:</strong> {{ user.city or "N/A" }}</li>
-        <li><strong>Address:</strong> {{ user.address or "N/A" }}</li>
-    </ul>
+    <!-- Profile Details Section -->
+    <div class="collapse mb-4" id="profileDetails">
+        <div class="card">
+            <div class="card-body">
+                <!-- <h4 class="text-muted">Profile Details</h4> -->
+                <ul class="list-group list-group-flush mt-3">
+                    {% if user.organization %}
+                    <li class="list-group-item bg-transparent">
+                        <strong>Organization:</strong> {{ user.organization }}
+                    </li>
+                    {% endif %}
+                    {% if user.country %}
+                    <li class="list-group-item bg-transparent">
+                        <strong>Country:</strong> {{ user.country }}
+                    </li>
+                    {% endif %}
+                    {% if user.city %}
+                    <li class="list-group-item bg-transparent">
+                        <strong>City:</strong> {{ user.city }}
+                    </li>
+                    {% endif %}
+                    {% if user.address %}
+                    <li class="list-group-item bg-transparent">
+                        <strong>Address:</strong> {{ user.address }}
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
 
-    <h2>Open Repositories</h2>
+    <!-- Open Repositories Section -->
+    <h4 class="mb-3">Open Repositories</h4>
     {% if repositories %}
-        <ul>
+        <div class="list-group">
             {% for repo in repositories %}
-                <li>
-                    <h3>
-                        <a href="{{ url_for('view_repository', author=user.username, repo_name=repo.repo_name) }}">
-                            {{ repo.repo_name }}
-                        </a>
-                    </h3>
-                    <p>{{ repo.description or "No description available." }}</p>
-                    <!-- <p><strong>Created:</strong> {{ repo.created_time | datetimeformat }}</p> -->
-                </li>
+                <a href="{{ url_for('view_repository', author=user.username, repo_name=repo.repo_name) }}" class="list-group-item list-group-item-action">
+                    <h5 class="mb-1">{{ repo.repo_name }}</h5>
+                    <p class="mb-1">{{ repo.description or "No description available." }}</p>
+                    <small class="">Created: {{ repo.created_time | datetimeformat }} · {{ repo.likes }} likes</small>
+                </a>
             {% endfor %}
-        </ul>
+        </div>
     {% else %}
-        <p>No open repositories available.</p>
+        <p class="text-muted">No open repositories available.</p>
     {% endif %}
-</div>
 
-<div class="mt-4">
-    <a href="{{ url_for('view_repositories') }}" class="btn btn-secondary">Back to Repositories</a>
+    <!-- Back Button -->
+    <div class="mt-4 text-center">
+        <a href="{{ url_for('view_repositories') }}" class="btn btn-secondary">Back to Repositories</a>
+    </div>
 </div>
 {% endblock %}
-
