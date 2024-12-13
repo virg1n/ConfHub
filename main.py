@@ -20,7 +20,7 @@ from pygments.lexers import get_lexer_for_filename, TextLexer
 from pygments.formatters import HtmlFormatter
 import io
 import zipfile
-import requests
+import requests 
 
 DELETE_REPOS_LOCALLY = False
 
@@ -54,6 +54,12 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message = "Please log in to access this page."
 login_manager.login_message_category = "info"
+
+@app.context_processor
+def inject_pygments_css():
+    formatter = HtmlFormatter()
+    styles = formatter.get_style_defs('.source')
+    return dict(pygments_css=styles)
 
 def create_db():
     """Helper function to create main database tables."""
@@ -217,6 +223,46 @@ class FDataBase:
         except sqlite3.Error as e:
             print("Error fetching liked repositories: " + str(e))
             return []
+
+    def getRepositoriesByUser(self, user_id):
+        try:
+            self.__cur.execute("""
+                SELECT r.repository_id AS id, r.name, r.description, r.created_time,
+                    u.username AS author,
+                    COUNT(l.user_id) AS stars
+                FROM repositories r
+                LEFT JOIN likes l ON r.repository_id = l.repository_id
+                JOIN users u ON r.user_id = u.id
+                WHERE r.user_id = ?
+                GROUP BY r.repository_id
+                ORDER BY r.created_time DESC
+            """, (user_id,))
+            return self.__cur.fetchall()
+        except sqlite3.Error as e:
+            print("Error retrieving user repositories: " + str(e))
+            return []
+
+    def getRandomRepositories(self, limit=10):
+        try:
+            self.__cur.execute("""
+                SELECT r.repository_id AS id, r.name, r.description, 
+                    u.username AS author,
+                    COUNT(l.user_id) AS likes
+                FROM repositories r
+                LEFT JOIN likes l ON r.repository_id = l.repository_id
+                JOIN users u ON r.user_id = u.id
+                GROUP BY r.repository_id, r.name, r.description, u.username
+                ORDER BY RANDOM()
+                LIMIT ?
+            """, (limit,))
+            return self.__cur.fetchall()
+        except sqlite3.Error as e:
+            print("Error retrieving random repositories: " + str(e))
+            return []
+
+
+
+
 
 
 @login_manager.user_loader
@@ -425,6 +471,9 @@ def logout():
     flash("You have been logged out", "success")
     return redirect(url_for('login'))
 
+# main.py
+
+
 @app.route('/profile', methods=["GET", "POST"])
 @login_required
 def profile():
@@ -433,15 +482,20 @@ def profile():
 
     # Fetch the current user's data
     user = dbase.getUserByID(current_user.get_id())
-
     if not user:
         flash("User not found.", "error")
         return redirect(url_for('logout'))
 
+    # Fetch user's repositories
+    user_repositories = dbase.getRepositoriesByUser(current_user.get_id())
+
+    # Fetch random repositories for exploration
+    random_repositories = dbase.getRandomRepositories(limit=10)
+
     if request.method == "POST":
         # Handle profile update form
         if 'update_profile' in request.form:
-            # Get updated form data
+            # Extract and sanitize form data
             first_name = request.form.get('first_name', '').strip()
             last_name = request.form.get('last_name', '').strip()
             username = request.form.get('username', '').strip()
@@ -454,11 +508,11 @@ def profile():
             # Validation
             if not first_name or not last_name or not username:
                 flash("First name, last name, and username are required.", "error")
-                return render_template("profile.html", user=user)
+                return render_template("profile.html", user=user, user_repositories=user_repositories, random_repositories=random_repositories)
 
             if len(username) < 4:
                 flash("Username must be at least 4 characters long.", "error")
-                return render_template("profile.html", user=user)
+                return render_template("profile.html", user=user, user_repositories=user_repositories, random_repositories=random_repositories)
 
             # Check if the username is already taken by another user
             existing_user = db.execute("""
@@ -466,7 +520,7 @@ def profile():
             """, (username, current_user.get_id())).fetchone()
             if existing_user:
                 flash("Username is already taken by another user.", "error")
-                return render_template("profile.html", user=user)
+                return render_template("profile.html", user=user, user_repositories=user_repositories, random_repositories=random_repositories)
 
             # Update the user's data in the database
             try:
@@ -479,11 +533,10 @@ def profile():
                 ))
                 db.commit()
                 flash("Profile updated successfully!", "success")
+                # Refresh user data
+                user = dbase.getUserByID(current_user.get_id())
             except sqlite3.Error as e:
                 flash(f"Error updating profile: {e}", "error")
-
-            # Fetch updated user data for display
-            user = dbase.getUserByID(current_user.get_id())
 
         # Handle vector search form
         elif 'vector_search' in request.form:
@@ -491,7 +544,12 @@ def profile():
             if search_query:
                 return redirect(url_for('vector_search', query=search_query))
 
-    return render_template("profile.html", user=user)
+    return render_template(
+        "profile.html",
+        user=user,
+        user_repositories=user_repositories,
+        random_repositories=random_repositories
+    )
 
 
  

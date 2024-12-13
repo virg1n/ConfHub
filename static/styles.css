@@ -1,4 +1,220 @@
-a{
-    text-decoration: none;
-    color: black;
+/* General Body Styling */
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #121212; /* Dark background */
+    color: #e0e0e0; /* Light text */
+}
+
+/* Navbar */
+.navbar {
+    background-color: #1f1f1f;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+.navbar-brand {
+    color: #bb86fc !important;
+}
+
+.navbar .nav-link {
+    color: #e0e0e0 !important;
+}
+
+.navbar .nav-link:hover {
+    color: #bb86fc !important;
+}
+
+/* Container Margins */
+.container {
+    max-width: 1200px;
+}
+
+/* Headings */
+h2, h4 {
+    font-weight: 700;
+    color: #bb86fc; /* Highlight color */
+}
+
+/* Profile Page Specific Styles */
+#editProfileForm {
+    background-color: #1f1f1f;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+/* Form Styling */
+form .form-control {
+    background-color: #1e1e1e;
+    border: 1px solid #333333;
+    color: #e0e0e0;
+    border-radius: 6px;
+    transition: box-shadow 0.3s, border-color 0.3s;
+}
+
+form .form-control:focus {
+    border-color: #bb86fc;
+    box-shadow: 0 0 5px rgba(187, 134, 252, 0.7);
+}
+
+form .form-label {
+    color: #e0e0e0;
+    font-weight: 500;
+}
+
+form button {
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+form button:hover {
+    transform: scale(1.03);
+}
+
+/* Sidebar */
+.col-md-3 h4 {
+    border-bottom: 2px solid #333333;
+    padding-bottom: 8px;
+    margin-bottom: 15px;
+    color: #bb86fc;
+}
+
+.list-group-item {
+    background-color: #1e1e1e;
+    border: 1px solid #333333;
+    color: #e0e0e0;
+    border-radius: 6px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.list-group-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px #bb86fc;
+    background-color: #292929;
+}
+
+/* Middle Section */
+.list-group-item-action {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    transition: background-color 0.2s, transform 0.2s;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.list-group-item-action:hover {
+    background-color: #bb86fc;
+    transform: scale(1.02);
+}
+
+/* Card Styles */
+.card {
+    background-color: #1f1f1f;
+    border: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.7);
+    border-radius: 12px;
+}
+
+.card img {
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+
+.card-body {
+    text-align: center;
+    padding: 15px;
+    color: #e0e0e0;
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: #bb86fc;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-weight: 500;
+}
+
+.btn-primary:hover {
+    background-color: #9c4dff;
+}
+
+.btn-outline-secondary {
+    border: 2px solid #666666;
+    color: #e0e0e0;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.btn-outline-secondary:hover {
+    background-color: #292929;
+    color: #bb86fc;
+}
+
+/* Advertisements */
+.card-text {
+    font-size: 14px;
+    color: #bbbbbb;
+    font-weight: 500;
+}
+
+.card-img-top {
+    object-fit: cover;
+    height: 150px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .d-flex {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .list-group-item-action {
+        padding: 10px;
+    }
+
+    .card img {
+        height: 100px;
+    }
+}
+
+
+/* Input and Textarea Styling */
+form .form-control {
+    background-color: #1e1e1e; /* Consistent dark background */
+    color: #e0e0e0; /* Light text */
+    border: 1px solid #333333; /* Subtle border */
+    border-radius: 6px;
+    transition: box-shadow 0.3s, border-color 0.3s;
+}
+
+/* Placeholder Text Styling */
+form .form-control::placeholder {
+    color: #777777; /* Subtle gray for placeholders */
+    opacity: 1; /* Ensure visibility */
+}
+
+/* On Focus (Prevent White Background) */
+form .form-control:focus {
+    background-color: #1e1e1e; /* Keep background dark */
+    color: #e0e0e0; /* Keep text light */
+    border-color: #bb86fc; /* Highlight border on focus */
+    box-shadow: 0 0 5px rgba(187, 134, 252, 0.5); /* Glowing border effect */
+}
+
+/* Textarea Styling */
+form textarea.form-control {
+    resize: vertical; /* Allow vertical resizing */
+    min-height: 120px; /* Ensure minimum height for better UX */
+}
+
+/* Checkbox Styling */
+form .form-check-input {
+    background-color: #1e1e1e;
+    border: 1px solid #333333;
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+form .form-check-input:checked {
+    background-color: #bb86fc;
+    border-color: #bb86fc;
 }

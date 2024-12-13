@@ -1,60 +1,64 @@
-{% extends "base.html" %}
+{% extends "base_new.html" %}
 
 {% block title %}Create Repository - Open..{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h3>Create New Repository</h3>
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header text-center text-light" style="background-color: #1f1f1f;">
+            <h3>Create New Repository</h3>
+        </div>
+        <div class="card-body" style="background-color: #121212;">
+            <form method="POST" enctype="multipart/form-data">
+                <!-- Repository Name -->
+                <div class="mb-3">
+                    <label for="repo_name" class="form-label fw-bold text-light">Repository Name</label>
+                    <input type="text" class="form-control" id="repo_name" name="repo_name" required>
+                </div>
+
+                <!-- Description -->
+                <div class="mb-3">
+                    <label for="description" class="form-label fw-bold text-light">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="4" placeholder="Enter repository description..."></textarea>
+                </div>
+
+                <!-- Use AI for Description -->
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" value="on" id="use_ai" name="use_ai">
+                    <label class="form-check-label text-light" for="use_ai">
+                        Generate Description Using AI
+                    </label>
+                </div>
+
+                <!-- Files Upload -->
+                <div class="mb-3">
+                    <label for="files" class="form-label fw-bold text-light">Upload Files</label>
+                    <input class="form-control" type="file" id="files" name="files" multiple required>
+                </div>
+
+                <!-- Diagram Upload -->
+                <div class="mb-3">
+                    <label for="diagram" class="form-label fw-bold text-light">Upload Diagram (Optional)</label>
+                    <input class="form-control" type="file" id="diagram" name="diagram">
+                </div>
+
+                <!-- Repository Visibility -->
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" value="on" id="is_open" name="is_open" checked>
+                    <label class="form-check-label text-light" for="is_open">
+                        Make Repository Public
+                    </label>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn btn-primary">Create Repository</button>
+            </form>
+        </div>
     </div>
-    <div class="card-body">
-        <form method="POST" enctype="multipart/form-data">
-            <!-- Repository Name -->
-            <div class="mb-3">
-                <label for="repo_name" class="form-label">Repository Name</label>
-                <input type="text" class="form-control" id="repo_name" name="repo_name" required>
-            </div>
 
-            <!-- Description -->
-            <div class="mb-3">
-                <label for="description" class="form-label">Description</label>
-                <textarea class="form-control" id="description" name="description" rows="4" placeholder="Enter repository description..."></textarea>
-            </div>
-
-            <!-- Use AI for Description -->
-            <div class="form-check mb-3">
-                <input class="form-check-input" type="checkbox" value="on" id="use_ai" name="use_ai">
-                <label class="form-check-label" for="use_ai">
-                    Generate Description Using AI
-                </label>
-            </div>
-
-            <!-- Files Upload -->
-            <div class="mb-3">
-                <label for="files" class="form-label">Upload Files</label>
-                <input class="form-control" type="file" id="files" name="files" multiple required>
-            </div>
-
-            <!-- Diagram Upload -->
-            <div class="mb-3">
-                <label for="diagram" class="form-label">Upload Diagram (Optional)</label>
-                <input class="form-control" type="file" id="diagram" name="diagram">
-            </div>
-
-            <!-- Repository Visibility -->
-            <div class="form-check mb-3">
-                <input class="form-check-input" type="checkbox" value="on" id="is_open" name="is_open" checked>
-                <label class="form-check-label" for="is_open">
-                    Make Repository Public
-                </label>
-            </div>
-
-            <button type="submit" class="btn btn-primary">Create Repository</button>
-        </form>
+    <!-- Back Button -->
+    <div class="mt-4 text-center">
+        <a href="{{ url_for('view_repositories') }}" class="btn btn-outline-secondary">Back to Repositories</a>
     </div>
-</div>
-
-<div class="mt-4">
-    <a href="{{ url_for('view_repositories') }}" class="btn btn-secondary">Back to Repositories</a>
 </div>
 {% endblock %}
