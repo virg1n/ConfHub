@@ -1,191 +1,138 @@
-<!-- templates/all_repositories.html -->
-{% extends "base.html" %}
+{% extends "base_new.html" %}
 
 {% block title %}All Repositories{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">All Repositories</h2>
+<div class="container mt-4">
+    <h2 class="mb-4 text-light">All Repositories</h2>
 
-<!-- Search Form -->
-<div class="mb-4">
-    <input type="text" id="search" class="form-control" placeholder="Search by description, name, or author" value="{{ search_query }}">
-</div>
+    <!-- Search Form and Filters -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <input type="text" id="search" class="form-control me-3" placeholder="Search by description, name, or author" value="{{ search_query }}">
 
-<!-- Repositories Table -->
-<div class="table-responsive">
-    <table class="table table-striped table-hover">
-        <thead class="table-dark">
-            <tr>
-                <th scope="col">Repository Name</th>
-                <th scope="col">Author</th>
-                <th scope="col">Created Date</th>
-                <th scope="col">Description</th>
-                <th scope="col">Likes</th>
-                <th scope="col">View</th>
-            </tr>
-        </thead>
-        <tbody id="repositoriesTableBody">
-            {% for repo in repositories %}
-                <tr>
-                    <td>{{ repo.repo_name }}</td>
-                    <td>
-                        <a href="{{ url_for('user_profile', username=repo.username) }}">
-                            {{ repo.author_name }}
-                        </a>
-                    </td>
-                    <td>{{ repo.created_time | datetimeformat }}</td>
-                    <td class="description-cell">{{ repo.description }}</td>
-                    <td>
-                        <div class="d-flex align-items-center">
-                            <form action="{{ url_for('like_repository', repo_id=repo.repo_id) }}" method="POST" class="me-2">
-                                {% if repo.has_liked %}
-                                    <button type="submit" class="btn btn-danger btn-sm">
-                                        <i class="bi bi-heart-fill"></i> Unlike
-                                    </button>
-                                {% else %}
-                                    <button type="submit" class="btn btn-outline-danger btn-sm">
-                                        <i class="bi bi-heart"></i> Like
-                                    </button>
-                                {% endif %}
-                            </form>
-                            <!-- Like Count -->
-                            <span class="ms-2">{{ repo.like_count }} {{ 'Like' if repo.like_count == 1 else 'Likes' }}</span>
-                        </div>
-                    </td>
-                    <td>
-                        <a href="{{ url_for('view_repository', author=repo.username, repo_name=repo.repo_name) }}" class="btn btn-primary btn-sm">View</a>
-                    </td>
-                </tr>
-            {% else %}
-                <tr>
-                    <td colspan="6" class="text-center">No repositories found.</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+        <!-- Repository Count Buttons -->
+        <div class="btn-group">
+            <button class="btn btn-outline-light" onclick="fetchRepositories(10)">10 Repos</button>
+            <button class="btn btn-outline-light" onclick="fetchRepositories(30)">30 Repos</button>
+            <button class="btn btn-outline-light" onclick="fetchRepositories(50)">50 Repos</button>
+            <button class="btn btn-outline-light" onclick="fetchRepositories(100)">100 Repos</button>
+        </div>
+    </div>
 
-
-<div class="mt-4">
-    <a href="{{ url_for('create_repo') }}" class="btn btn-success">Create Repository</a>
-    <a href="{{ url_for('view_repositories') }}" class="btn btn-info">My Repositories</a>
-    <a href="{{ url_for('liked_repositories') }}" class="btn btn-warning">Liked Repositories</a>
-    <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+    <!-- Repositories List -->
+    <div id="repositoriesList" class="list-group">
+        {% for repo in repositories %}
+            <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3" style="margin-top: 9px;">
+                <div>
+                    <h5 class="mb-1 text-light">{{ repo.repo_name }}</h5>
+                    <p class="mb-1 text-light">{{ repo.description }}</p>
+                    <small>By <a href="{{ url_for('user_profile', username=repo.username) }}" class="text-decoration-none text-light">{{ repo.author_name }}</a></small>
+                </div>
+                <div class="d-flex align-items-center">
+                    <form action="{{ url_for('like_repository', repo_id=repo.repo_id) }}" method="POST" class="me-2">
+                        {% if repo.has_liked %}
+                            <button type="submit" class="btn btn-danger btn-sm">
+                                <i class="bi bi-heart-fill"></i> Unlike
+                            </button>
+                        {% else %}
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-heart"></i> Like
+                            </button>
+                        {% endif %}
+                    </form>
+                    <span class="ms-2 text-light">{{ repo.like_count }} {{ 'Like' if repo.like_count == 1 else 'Likes' }}</span>
+                </div>
+            </div>
+        {% else %}
+            <div class="text-center text-muted">No repositories found.</div>
+        {% endfor %}
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// JavaScript to handle real-time search using Fetch API
-function searchRepositories() {
+function fetchRepositories(limit = 10) {
     const searchQuery = document.getElementById('search').value;
 
-    // Send AJAX request to the server with the search query
-    fetch(`/all_repositories?search=${encodeURIComponent(searchQuery)}`, {
+    // Fetch repositories with AJAX
+    fetch(`/all_repositories?search=${encodeURIComponent(searchQuery)}&limit=${limit}`, {
         method: 'GET',
         headers: {
-            'X-Requested-With': 'XMLHttpRequest'  // Indicate AJAX request
+            'X-Requested-With': 'XMLHttpRequest' // Indicate AJAX request
         }
     })
     .then(response => response.json())
     .then(data => {
-        // Update the table with the filtered repositories
-        const tableBody = document.getElementById('repositoriesTableBody');
-        tableBody.innerHTML = '';  // Clear the table
+        // Update the repository list
+        const repositoriesList = document.getElementById('repositoriesList');
+        repositoriesList.innerHTML = ''; // Clear existing list
 
         if (data.repositories.length > 0) {
             data.repositories.forEach(repo => {
-                // Create table row
-                const row = document.createElement('tr');
+                const repoDiv = document.createElement('div');
+                repoDiv.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3';
+                repoDiv.onclick = () => {
+                    window.location.href = `/repo/${encodeURIComponent(repo.username)}/${encodeURIComponent(repo.repo_name)}`;
+                };
 
-                // Repository Name
-                const nameCell = document.createElement('td');
-                nameCell.textContent = repo.repo_name;
-                row.appendChild(nameCell);
+                const leftDiv = document.createElement('div');
 
-                // Author
-                const authorCell = document.createElement('td');
-                const authorLink = document.createElement('a');
-                authorLink.href = `/user/profile/${encodeURIComponent(repo.username)}`;
-                authorLink.textContent = repo.author_name;
-                authorCell.appendChild(authorLink);
-                row.appendChild(authorCell);
+                const repoTitle = document.createElement('h5');
+                repoTitle.className = 'mb-1 text-light';
+                repoTitle.textContent = repo.repo_name;
 
-                // Created Date
-                const dateCell = document.createElement('td');
-                const createdDate = new Date(repo.created_time * 1000);
-                dateCell.textContent = createdDate.toLocaleString();
-                row.appendChild(dateCell);
+                const repoDesc = document.createElement('p');
+                repoDesc.className = 'mb-1 text-muted';
+                repoDesc.textContent = repo.description;
 
-                // Description
-                const descCell = document.createElement('td');
-                descCell.classList.add('description-cell');
-                descCell.textContent = repo.description;
-                row.appendChild(descCell);
+                const repoAuthor = document.createElement('small');
+                repoAuthor.innerHTML = `By <a href="/user/profile/${encodeURIComponent(repo.username)}" class="text-decoration-none text-light">${repo.author_name}</a>`;
 
-                // Likes
-                const likesCell = document.createElement('td');
-                const likesDiv = document.createElement('div');
-                likesDiv.classList.add('d-flex', 'align-items-center');
+                leftDiv.appendChild(repoTitle);
+                leftDiv.appendChild(repoDesc);
+                leftDiv.appendChild(repoAuthor);
 
-                // Like/Unlike Form
+                const rightDiv = document.createElement('div');
+                rightDiv.className = 'd-flex align-items-center';
+
                 const form = document.createElement('form');
                 form.action = `/like_repository/${repo.repo_id}`;
                 form.method = 'POST';
-                form.classList.add('me-2');
 
-                // Like/Unlike Button
-                const button = document.createElement('button');
-                button.type = 'submit';
-                button.classList.add('btn', repo.has_liked ? 'btn-danger' : 'btn-outline-danger', 'btn-sm');
+                const likeButton = document.createElement('button');
+                likeButton.type = 'submit';
+                likeButton.className = `btn btn-sm ${repo.has_liked ? 'btn-danger' : 'btn-outline-danger'}`;
+                likeButton.innerHTML = `<i class="bi ${repo.has_liked ? 'bi-heart-fill' : 'bi-heart'}"></i> ${repo.has_liked ? 'Unlike' : 'Like'}`;
 
-                // Icon and Text
-                const icon = document.createElement('i');
-                icon.classList.add('bi', repo.has_liked ? 'bi-heart-fill' : 'bi-heart');
-                button.appendChild(icon);
+                form.appendChild(likeButton);
 
-                const buttonText = document.createTextNode(` ${repo.has_liked ? 'Unlike' : 'Like'}`);
-                button.appendChild(buttonText);
+                const likeCount = document.createElement('span');
+                likeCount.className = 'ms-2 text-light';
+                likeCount.textContent = `${repo.like_count} ${repo.like_count === 1 ? 'Like' : 'Likes'}`;
 
-                form.appendChild(button);
-                likesDiv.appendChild(form);
+                rightDiv.appendChild(form);
+                rightDiv.appendChild(likeCount);
 
-                // Like Count
-                const likeCountSpan = document.createElement('span');
-                likeCountSpan.textContent = `${repo.like_count} ${repo.like_count === 1 ? 'Like' : 'Likes'}`;
-                likesDiv.appendChild(likeCountSpan);
+                repoDiv.appendChild(leftDiv);
+                repoDiv.appendChild(rightDiv);
 
-                likesCell.appendChild(likesDiv);
-                row.appendChild(likesCell);
-
-                // View Button
-                const viewCell = document.createElement('td');
-                const viewButton = document.createElement('a');
-                viewButton.href = `/repo/${encodeURIComponent(repo.username)}/${encodeURIComponent(repo.repo_name)}`;
-                viewButton.classList.add('btn', 'btn-primary', 'btn-sm');
-                viewButton.textContent = 'View';
-                viewCell.appendChild(viewButton);
-                row.appendChild(viewCell);
-
-                // Append row to table body
-                tableBody.appendChild(row);
+                repositoriesList.appendChild(repoDiv);
             });
         } else {
-            const row = document.createElement('tr');
-            const noDataCell = document.createElement('td');
-            noDataCell.colSpan = 6;
-            noDataCell.classList.add('text-center');
-            noDataCell.textContent = 'No repositories found.';
-            row.appendChild(noDataCell);
-            tableBody.appendChild(row);
+            const noDataDiv = document.createElement('div');
+            noDataDiv.className = 'text-center text-muted';
+            noDataDiv.textContent = 'No repositories found.';
+            repositoriesList.appendChild(noDataDiv);
         }
     })
     .catch(error => console.error('Error fetching repositories:', error));
 }
 
-// Add event listener to search input for real-time search
+// Attach event listeners
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById('search').addEventListener('input', searchRepositories);
+    document.getElementById('search').addEventListener('input', () => fetchRepositories());
+    fetchRepositories(); // Fetch initial repositories
 });
 </script>
 {% endblock %}
