@@ -1,0 +1,85 @@
+{% extends "base_new.html" %}
+
+{% block title %}Admin - View Repository{% endblock %}
+
+{% block content %}
+<h1>View Repository: {{ repo.name }}</h1>
+<p><a href="{{ url_for('admin_page') }}">Back to Admin Dashboard</a></p>
+
+<h2>Repository Details</h2>
+<form method="POST" action="{{ url_for('admin_view_repository', repo_id=repo.repository_id) }}" enctype="multipart/form-data">
+    <input type="hidden" name="action" value="update_repository">
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <td>{{ repo.repository_id }}</td>
+        </tr>
+        <tr>
+            <th>Name</th>
+            <td><input type="text" name="name" value="{{ repo.name }}" required></td>
+        </tr>
+        <tr>
+            <th>Description</th>
+            <td><textarea name="description" rows="4" cols="50">{{ repo.description }}</textarea></td>
+        </tr>
+        <tr>
+            <th>Is Open</th>
+            <td><input type="checkbox" name="is_open" {% if repo.is_open %}checked{% endif %}></td>
+        </tr>
+        <tr>
+            <th>AI Generated Description</th>
+            <td><input type="checkbox" name="is_description_ai_generated" {% if repo.is_description_ai_generated %}checked{% endif %}></td>
+        </tr>
+        <tr>
+            <th>Diagram</th>
+            <td>
+                {% if repo.diagram %}
+                    <a href="{{ url_for('get_diagram', repo_id=repo.repository_id) }}" target="_blank">View Current Diagram</a><br>
+                {% else %}
+                    N/A<br>
+                {% endif %}
+                <label for="diagram">Upload New Diagram:</label>
+                <input type="file" name="diagram" accept="image/*">
+            </td>
+        </tr>
+    </table>
+    <button type="submit">Update Repository</button>
+</form>
+
+<form method="POST" action="{{ url_for('admin_view_repository', repo_id=repo.repository_id) }}" onsubmit="return confirm('Are you sure you want to delete this repository? This action cannot be undone.');">
+    <input type="hidden" name="action" value="delete_repository">
+    <button type="submit" style="background-color: red; color: white;">Delete Repository</button>
+</form>
+
+<h2>Repository Files</h2>
+{% if files %}
+    <table border="1">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Filename</th>
+                <th>Upload Time</th>
+                <th>Description</th>
+                <th>Download</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for file in files %}
+            <tr>
+                <td>{{ file.id }}</td>
+                <td>{{ file.filename }}</td>
+                <td>{{ file.upload_time|datetimeformat('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ file.description or 'N/A' }}</td>
+                <td><a href="{{ url_for('download_file', file_id=file.id) }}">Download</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No files found for this repository.</p>
+{% endif %}
+
+<h2>Like Count</h2>
+<p>{{ like_count }} {{ 'Like' if like_count == 1 else 'Likes' }}</p>
+
+{% endblock %}

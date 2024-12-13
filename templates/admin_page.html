@@ -1,0 +1,144 @@
+{% extends "base_new.html" %}
+
+{% block title %}Admin Page{% endblock %}
+
+{% block content %}
+<h1>Admin Dashboard</h1>
+<p><a href="{{ url_for('admin_logout') }}">Logout</a></p>
+
+<h2>Statistics</h2>
+<ul>
+    <li>Total Users: {{ stats.total_users }}</li>
+    <li>Total Repositories: {{ stats.total_repos }}</li>
+    <li>Total Files: {{ stats.total_files }}</li>
+</ul>
+
+<hr>
+
+<h2>All Users</h2>
+
+<!-- User Search Form -->
+<form method="GET" action="{{ url_for('admin_page') }}">
+    <input type="hidden" name="repo_page" value="{{ repo_page }}">
+    <input type="hidden" name="repo_search" value="{{ repo_search }}">
+    <input type="text" name="user_search" placeholder="Search Users" value="{{ user_search }}">
+    <button type="submit">Search Users</button>
+</form>
+
+<!-- Users Table -->
+<table border="1" style="width: 100%; cursor: pointer;">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>First Name</th>
+            <th>Last Name</th>
+            <th>Username</th>
+            <th>Organization</th>
+            <th>Country</th>
+            <th>City</th>
+            <th>Address</th>
+            <th>Phone Number</th>
+            <th>Email</th>
+            <th>Created At</th>
+            <th>Verified</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr onclick="window.location=`{{ url_for('admin_view_user', user_id=user.id) }}`" style="background-color: {% if loop.index0 % 2 == 0 %}#f2f2f2{% else %}#ffffff{% endif %};">
+            <td>{{ user.id }}</td>
+            <td>{{ user.first_name }}</td>
+            <td>{{ user.last_name }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ user.organization or 'N/A' }}</td>
+            <td>{{ user.country or 'N/A' }}</td>
+            <td>{{ user.city or 'N/A' }}</td>
+            <td>{{ user.address or 'N/A' }}</td>
+            <td>{{ user.phone_number or 'N/A' }}</td>
+            <td>{{ user.email }}</td>
+            <td>{{ user.created_at|datetimeformat('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ 'Yes' if user.is_verified else 'No' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Users Pagination -->
+<div style="margin-top: 10px;">
+    {% if total_user_pages > 1 %}
+        <span>Page {{ user_page }} of {{ total_user_pages }}</span>
+        {% if user_page > 1 %}
+            <a href="{{ url_for('admin_page', user_page=1, user_search=user_search, repo_page=repo_page, repo_search=repo_search) }}">First</a>
+            <a href="{{ url_for('admin_page', user_page=user_page-1, user_search=user_search, repo_page=repo_page, repo_search=repo_search) }}">Previous</a>
+        {% endif %}
+        {% if total_user_pages > user_page %}
+            <a href="{{ url_for('admin_page', user_page=user_page+1, user_search=user_search, repo_page=repo_page, repo_search=repo_search) }}">Next</a>
+            <a href="{{ url_for('admin_page', user_page=total_user_pages, user_search=user_search, repo_page=repo_page, repo_search=repo_search) }}">Last</a>
+        {% endif %}
+    {% endif %}
+</div>
+
+<hr>
+
+<h2>All Repositories</h2>
+
+<!-- Repository Search Form -->
+<form method="GET" action="{{ url_for('admin_page') }}">
+    <input type="hidden" name="user_page" value="{{ user_page }}">
+    <input type="hidden" name="user_search" value="{{ user_search }}">
+    <input type="text" name="repo_search" placeholder="Search Repositories" value="{{ repo_search }}">
+    <button type="submit">Search Repositories</button>
+</form>
+
+<!-- Repositories Table -->
+<table border="1" style="width: 100%; cursor: pointer;">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Created Time</th>
+            <th>Is Open</th>
+            <th>Diagram</th>
+            <th>AI Generated Desc</th>
+            <th>Author</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for repo in repositories %}
+        <tr onclick="window.location=`{{ url_for('admin_view_repository', repo_id=repo.repository_id) }}`" style="background-color: {% if loop.index0 % 2 == 0 %}#f2f2f2{% else %}#ffffff{% endif %};">
+            <td>{{ repo.repository_id }}</td>
+            <td>{{ repo.name }}</td>
+            <td>{{ repo.description }}</td>
+            <td>{{ repo.created_time|datetimeformat('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ 'Yes' if repo.is_open else 'No' }}</td>
+            <td>
+                {% if repo.diagram %}
+                    <a href="{{ url_for('get_diagram', repo_id=repo.repository_id) }}" target="_blank">View Diagram</a>
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+            <td>{{ 'Yes' if repo.is_description_ai_generated else 'No' }}</td>
+            <td>{{ repo.author }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Repositories Pagination -->
+<div style="margin-top: 10px;">
+    {% if total_repo_pages > 1 %}
+        <span>Page {{ repo_page }} of {{ total_repo_pages }}</span>
+        {% if repo_page > 1 %}
+            <a href="{{ url_for('admin_page', repo_page=1, repo_search=repo_search, user_page=user_page, user_search=user_search) }}">First</a>
+            <a href="{{ url_for('admin_page', repo_page=repo_page-1, repo_search=repo_search, user_page=user_page, user_search=user_search) }}">Previous</a>
+        {% endif %}
+        {% if total_repo_pages > repo_page %}
+            <a href="{{ url_for('admin_page', repo_page=repo_page+1, repo_search=repo_search, user_page=user_page, user_search=user_search) }}">Next</a>
+            <a href="{{ url_for('admin_page', repo_page=total_repo_pages, repo_search=repo_search, user_page=user_page, user_search=user_search) }}">Last</a>
+        {% endif %}
+    {% endif %}
+</div>
+
+{% endblock %}

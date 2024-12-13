@@ -21,7 +21,10 @@ from pygments.formatters import HtmlFormatter
 import io
 import zipfile
 import requests 
+import math
 
+USERS_PER_PAGE = 20
+REPOS_PER_PAGE = 20
 DELETE_REPOS_LOCALLY = False
 
 # from VctSrch import vector_search_repos, description_to_embedding
@@ -1440,6 +1443,321 @@ def like_repository(repo_id):
     # Otherwise, redirect back to the page
     return redirect(request.referrer or url_for('all_repositories'))
 
+
+from werkzeug.exceptions import abort
+
+from flask import Flask, render_template, request, g, flash, redirect, url_for, session
+@app.route("/admin_login", methods=["GET", "POST"])
+def admin_login():
+    if session.get('admin_logged_in'):
+        return redirect(url_for('admin_page'))
+    
+    if request.method == "POST":
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+        admin_password = os.environ.get("ADMIN_PASSWORD", "admin")
+        
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        
+        if username == admin_username and password == admin_password:
+            session['admin_logged_in'] = True
+            flash("Admin login successful!", "success")
+            return redirect(url_for('admin_page'))
+        else:
+            flash("Invalid admin credentials.", "error")
+    
+    return render_template("admin_login.html")
+
+
+@app.route("/admin_page", methods=["GET"])
+def admin_page():
+    if not session.get('admin_logged_in'):
+        flash("You need to be logged in as admin to access this page.", "error")
+        return redirect(url_for('admin_login'))
+    
+    db = get_db()
+    dbase = FDataBase(db)
+    
+    # Pagination parameters
+    user_page = request.args.get('user_page', 1, type=int)
+    repo_page = request.args.get('repo_page', 1, type=int)
+    
+    # Search parameters
+    user_search = request.args.get('user_search', '').strip()
+    repo_search = request.args.get('repo_search', '').strip()
+    
+    # Fetch users with search and pagination
+    user_query = "SELECT * FROM users"
+    user_params = []
+    if user_search:
+        user_query += " WHERE first_name LIKE ? OR last_name LIKE ? OR username LIKE ? OR email LIKE ?"
+        search_term = f"%{user_search}%"
+        user_params.extend([search_term] * 4)
+    
+    user_query += " ORDER BY created_at DESC"
+    
+    # Get total users count for pagination
+    user_count_query = "SELECT COUNT(*) as count FROM users"
+    if user_search:
+        user_count_query += " WHERE first_name LIKE ? OR last_name LIKE ? OR username LIKE ? OR email LIKE ?"
+    
+    user_count = db.execute(user_count_query, user_params).fetchone()['count']
+    total_user_pages = math.ceil(user_count / USERS_PER_PAGE)
+    
+    # Fetch paginated users
+    offset = (user_page - 1) * USERS_PER_PAGE
+    user_query += " LIMIT ? OFFSET ?"
+    user_params.extend([USERS_PER_PAGE, offset])
+    users = db.execute(user_query, user_params).fetchall()
+    
+    # Fetch repositories with search and pagination
+    repo_query = """
+        SELECT r.repository_id, r.name, r.description, r.created_time, r.is_open, 
+               r.diagram, r.is_description_ai_generated, u.username AS author
+        FROM repositories r
+        JOIN users u ON r.user_id = u.id
+    """
+    repo_params = []
+    if repo_search:
+        repo_query += " WHERE r.name LIKE ? OR r.description LIKE ? OR u.username LIKE ?"
+        search_term = f"%{repo_search}%"
+        repo_params.extend([search_term] * 3)
+    
+    repo_query += " ORDER BY r.created_time DESC"
+    
+    # Get total repositories count for pagination
+    repo_count_query = """
+        SELECT COUNT(*) as count 
+        FROM repositories r 
+        JOIN users u ON r.user_id = u.id
+    """
+    if repo_search:
+        repo_count_query += " WHERE r.name LIKE ? OR r.description LIKE ? OR u.username LIKE ?"
+    
+    repo_count = db.execute(repo_count_query, repo_params).fetchone()['count']
+    total_repo_pages = math.ceil(repo_count / REPOS_PER_PAGE)
+    
+    # Fetch paginated repositories
+    offset = (repo_page - 1) * REPOS_PER_PAGE
+    repo_query += " LIMIT ? OFFSET ?"
+    repo_params.extend([REPOS_PER_PAGE, offset])
+    repositories = db.execute(repo_query, repo_params).fetchall()
+    
+    # Fetch statistics
+    total_users = db.execute("SELECT COUNT(*) as count FROM users").fetchone()['count']
+    total_repos = db.execute("SELECT COUNT(*) as count FROM repositories").fetchone()['count']
+    total_files = db.execute("SELECT COUNT(*) as count FROM uploads").fetchone()['count']
+    
+    stats = {
+        'total_users': total_users,
+        'total_repos': total_repos,
+        'total_files': total_files
+    }
+    
+    return render_template(
+        "admin_page.html",
+        users=users,
+        repositories=repositories,
+        stats=stats,
+        user_page=user_page,
+        total_user_pages=total_user_pages,
+        repo_page=repo_page,
+        total_repo_pages=total_repo_pages,
+        user_search=user_search,
+        repo_search=repo_search
+    )
+
+
+@app.route("/admin_logout")
+def admin_logout():
+    session.pop('admin_logged_in', None)
+    flash("Admin logged out successfully.", "success")
+    return redirect(url_for('admin_login'))
+
+
+# New Routes for Admin Viewing User and Repository Details
+@app.route('/admin/view_user/<int:user_id>', methods=['GET', 'POST'])
+def admin_view_user(user_id):
+    if not session.get('admin_logged_in'):
+        flash("You need to be logged in as admin to access this page.", "error")
+        return redirect(url_for('admin_login'))
+    
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for('admin_page'))
+    
+    # Fetch user's repositories
+    repositories = db.execute("SELECT * FROM repositories WHERE user_id = ?", (user_id,)).fetchall()
+    
+    if request.method == "POST":
+        action = request.form.get('action')
+        
+        if action == "update_user":
+            # Extract form data
+            first_name = request.form.get('first_name', '').strip()
+            last_name = request.form.get('last_name', '').strip()
+            username = request.form.get('username', '').strip()
+            email = request.form.get('email', '').strip()
+            organization = request.form.get('organization', '').strip() or None
+            country = request.form.get('country', '').strip() or None
+            city = request.form.get('city', '').strip() or None
+            address = request.form.get('address', '').strip() or None
+            phone_number = request.form.get('phone_number', '').strip() or None
+            is_verified = 1 if request.form.get('is_verified') == 'on' else 0
+            
+            # Validate required fields
+            if not first_name or not last_name or not username or not email:
+                flash("First name, last name, username, and email are required.", "error")
+                return redirect(url_for('admin_view_user', user_id=user_id))
+            
+            # Check if the new username or email is already taken by another user
+            existing_user = db.execute("""
+                SELECT id FROM users 
+                WHERE (username = ? OR email = ?) AND id != ?
+            """, (username, email, user_id)).fetchone()
+            if existing_user:
+                flash("Username or email is already in use by another user.", "error")
+                return redirect(url_for('admin_view_user', user_id=user_id))
+            
+            # Update user details
+            try:
+                db.execute("""
+                    UPDATE users
+                    SET first_name = ?, last_name = ?, username = ?, email = ?, organization = ?, 
+                        country = ?, city = ?, address = ?, phone_number = ?, is_verified = ?
+                    WHERE id = ?
+                """, (
+                    first_name, last_name, username, email, organization, 
+                    country, city, address, phone_number, is_verified, user_id
+                ))
+                db.commit()
+                flash("User details updated successfully.", "success")
+                return redirect(url_for('admin_view_user', user_id=user_id))
+            except sqlite3.Error as e:
+                flash(f"Error updating user: {e}", "error")
+                return redirect(url_for('admin_view_user', user_id=user_id))
+        
+        elif action == "delete_user":
+            # Delete user and handle related data
+            try:
+                # Optionally, delete user files or repositories
+                # For now, assuming cascading deletes are handled by foreign keys
+                db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                db.commit()
+                flash("User deleted successfully.", "success")
+                return redirect(url_for('admin_page'))
+            except sqlite3.Error as e:
+                flash(f"Error deleting user: {e}", "error")
+                return redirect(url_for('admin_view_user', user_id=user_id))
+    
+    return render_template("admin_view_user.html", user=user, repositories=repositories)
+
+
+@app.route('/admin/view_repository/<int:repo_id>', methods=['GET', 'POST'])
+def admin_view_repository(repo_id):
+    if not session.get('admin_logged_in'):
+        flash("You need to be logged in as admin to access this page.", "error")
+        return redirect(url_for('admin_login'))
+    
+    db = get_db()
+    repo = db.execute("""
+        SELECT r.*, u.username AS author
+        FROM repositories r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.repository_id = ?
+    """, (repo_id,)).fetchone()
+    
+    if not repo:
+        flash("Repository not found.", "error")
+        return redirect(url_for('admin_page'))
+    
+    # Fetch repository files
+    files = db.execute("SELECT * FROM uploads WHERE repository_id = ?", (repo_id,)).fetchall()
+    
+    # Fetch like count
+    dbase = FDataBase(db)
+    like_count = dbase.get_like_count(repo_id)
+    
+    if request.method == "POST":
+        action = request.form.get('action')
+        
+        if action == "update_repository":
+            # Extract form data
+            name = request.form.get('name', '').strip()
+            description = request.form.get('description', '').strip()
+            is_open = 1 if request.form.get('is_open') == 'on' else 0
+            is_description_ai_generated = 1 if request.form.get('is_description_ai_generated') == 'on' else 0
+            diagram = request.files.get('diagram')
+            
+            # Validate required fields
+            if not name:
+                flash("Repository name is required.", "error")
+                return redirect(url_for('admin_view_repository', repo_id=repo_id))
+            
+            # Check if the new repository name is already taken by another repository for the same user
+            existing_repo = db.execute("""
+                SELECT repository_id FROM repositories
+                WHERE name = ? AND user_id = ? AND repository_id != ?
+            """, (name, repo['user_id'], repo_id)).fetchone()
+            if existing_repo:
+                flash("Repository name is already in use by another repository for this user.", "error")
+                return redirect(url_for('admin_view_repository', repo_id=repo_id))
+            
+            # Handle diagram upload
+            diagram_path = repo['diagram']
+            if diagram and diagram.filename:
+                diagram_filename = secure_filename(diagram.filename)
+                diagram_path = os.path.join(app.config['DIAGRAM_FOLDER'], diagram_filename)
+                diagram.save(diagram_path)
+                
+                # Optionally, remove the old diagram file
+                if repo['diagram'] and os.path.exists(repo['diagram']):
+                    os.remove(repo['diagram'])
+            
+            # Update repository details
+            try:
+                db.execute("""
+                    UPDATE repositories
+                    SET name = ?, description = ?, is_open = ?, is_description_ai_generated = ?, diagram = ?
+                    WHERE repository_id = ?
+                """, (
+                    name, description, is_open, is_description_ai_generated, diagram_path, repo_id
+                ))
+                db.commit()
+                flash("Repository details updated successfully.", "success")
+                return redirect(url_for('admin_view_repository', repo_id=repo_id))
+            except sqlite3.Error as e:
+                flash(f"Error updating repository: {e}", "error")
+                return redirect(url_for('admin_view_repository', repo_id=repo_id))
+        
+        elif action == "delete_repository":
+            # Delete repository and handle related data
+            try:
+                # Optionally, delete repository files
+                repo_dir = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(repo['name']))
+                if DELETE_REPOS_LOCALLY and os.path.exists(repo_dir):
+                    import shutil
+                    shutil.rmtree(repo_dir)
+                
+                # Delete diagram if exists
+                if repo['diagram'] and os.path.exists(repo['diagram']):
+                    os.remove(repo['diagram'])
+                
+                # Delete repository from database (uploads and likes will be deleted due to foreign keys)
+                db.execute("DELETE FROM repositories WHERE repository_id = ?", (repo_id,))
+                db.commit()
+                flash("Repository deleted successfully.", "success")
+                return redirect(url_for('admin_page'))
+            except sqlite3.Error as e:
+                flash(f"Error deleting repository: {e}", "error")
+                return redirect(url_for('admin_view_repository', repo_id=repo_id))
+            except Exception as e:
+                flash(f"Error deleting repository files: {e}", "error")
+                return redirect(url_for('admin_view_repository', repo_id=repo_id))
+    
+    return render_template("admin_view_repository.html", repo=repo, files=files, like_count=like_count)
 
 
 if __name__ == "__main__":
