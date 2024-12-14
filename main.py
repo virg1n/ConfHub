@@ -23,6 +23,7 @@ import zipfile
 import requests 
 import math
 from functools import wraps
+import json
 
 USERS_PER_PAGE = 20
 REPOS_PER_PAGE = 20
@@ -38,6 +39,8 @@ client = OpenAI(
 
 VECTOR_SEARCH_URL = "http://127.0.0.1:5001/vector_search"
 DESCRIPTION_TO_EMBEDDING_URL = "http://127.0.0.1:5001/description_to_embedding"
+VECTOR_SEARCH_SERVICE_URL = "http://127.0.0.1:5001/update_recommendations"
+
 
 ALLOWED_EXTENSIONS = {'.py', '.java', '.cpp', '.js', '.html', '.css', '.doc', '.cfg', '.txt'}
 
@@ -59,8 +62,6 @@ def admin_required(f):
             return redirect(url_for('admin_login'))
         return f(*args, **kwargs)
     return decorated_function
-
-# csrf = CSRFProtect(app)
 
 
 login_manager = LoginManager(app)
@@ -272,11 +273,63 @@ class FDataBase:
         except sqlite3.Error as e:
             print("Error retrieving random repositories: " + str(e))
             return []
+    
+    def get_recommended_repos(self, user_id):
+        """
+        Retrieve the list of recommended repository IDs for the user.
+        """
+        try:
+            self.__cur.execute("""
+                SELECT recomended_repo_ids FROM users WHERE id = ?
+            """, (user_id,))
+            row = self.__cur.fetchone()
+            if row and row['recomended_repo_ids']:
+                return json.loads(row['recomended_repo_ids'])
+            return []
+        except sqlite3.Error as e:
+            print(f"Error fetching recommended repositories: {e}")
+            return []
+        
+    def update_user_recommendations(self, user_id, recommended_repo_ids):
+        """
+        Update the `recomended_repo_ids` field for the user.
+        Stores the IDs as a comma-separated string.
+        """
+        try:
+            if recommended_repo_ids:
+                recommended_str = ",".join(map(str, recommended_repo_ids))
+            else:
+                recommended_str = ""
+            self.__cur.execute("""
+                UPDATE users
+                SET recomended_repo_ids = ?
+                WHERE id = ?
+            """, (recommended_str, user_id))
+            self.__db.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Error updating user recommendations: {e}")
+            return False
 
-
-
-
-
+def fetch_recommendations(user_id, k=10):
+    """
+    Call the vector search service to get recommended repository IDs for the user.
+    """
+    try:
+        response = requests.post(
+            VECTOR_SEARCH_SERVICE_URL,
+            json={"user_id": int(user_id), "k": k},
+            timeout=5  # Optional: set a timeout for the request
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("recommended_repo_ids", [])
+        else:
+            print(f"Error fetching recommendations: {response.status_code}, {response.text}")
+            return []
+    except Exception as e:
+        print(f"Exception while fetching recommendations: {e}")
+        return []
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -507,6 +560,39 @@ def profile():
 
     # Fetch random repositories for exploration
     random_repositories = dbase.getRandomRepositories(limit=10)
+    
+    recommended_repo_ids = user['recomended_repo_ids']
+    recommended_repos = []
+    print("USER RECOMENDATION")
+    print(recommended_repo_ids)
+    try:
+        if recommended_repo_ids:
+            # Convert the comma-separated string to a list of integers
+            repo_ids = list(map(int, recommended_repo_ids.split(',')))
+            
+            # Prepare the SQL query with placeholders
+            placeholders = ','.join(['?'] * len(repo_ids))
+            query = f"""
+                SELECT r.*, u.username as author
+                FROM repositories r
+                JOIN users u ON r.user_id = u.id
+                WHERE r.repository_id IN ({placeholders}) AND r.is_open = 1
+            """
+            
+            # Execute the query
+            fetched_repos = db.execute(query, repo_ids).fetchall()
+            
+            # Create a mapping from repository_id to repo data
+            repo_map = {repo['repository_id']: repo for repo in fetched_repos}
+            
+            # Order the repositories based on the order in repo_ids
+            recommended_repos = [repo_map[repo_id] for repo_id in repo_ids if repo_id in repo_map]
+            random_repositories = recommended_repos
+    
+    except Exception as e:
+        print("NOTHING")
+        random_repositories = []
+        print(f"Error fetching recommended repositories: {e}")
 
     if request.method == "POST":
         # Handle profile update form
@@ -1436,12 +1522,18 @@ def like_repository(repo_id):
     db = get_db()
     dbase = FDataBase(db)
 
+    user_id = current_user.get_id()
     if dbase.has_liked(current_user.get_id(), repo_id):
         dbase.unlike_repository(current_user.get_id(), repo_id)
         has_liked = False
     else:
         dbase.like_repository(current_user.get_id(), repo_id)
         has_liked = True
+    
+    recommended_repo_ids = fetch_recommendations(user_id, k=10)
+    print("USER LIKED:")
+    print(recommended_repo_ids)
+    dbase.update_user_recommendations(user_id, recommended_repo_ids)
 
     # Get the updated like count
     like_count = dbase.get_like_count(repo_id)

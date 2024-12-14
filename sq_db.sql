@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL UNIQUE,
     psw TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    is_verified INTEGER DEFAULT 0  -- 0 = Not Verified, 1 = Verified
+    is_verified INTEGER DEFAULT 0,  -- 0 = Not Verified, 1 = Verified
+    recomended_repo_ids TEXT DEFAULT '[]'
 );
 
 
