@@ -177,9 +177,6 @@ def update_recommendations():
             WHERE l.user_id = ? AND r.vector IS NOT NULL
         """, (user_id,))
         liked_repos = cursor.fetchall()
-
-        print("LIKED REPOS:")
-        print(liked_repos)
         
         if not liked_repos:
             return jsonify({"recommended_repo_ids": []}), 200  # No likes to base recommendations on
@@ -199,9 +196,7 @@ def update_recommendations():
         if not embeddings:
             return jsonify({"recommended_repo_ids": []}), 200  # No valid embeddings
         
-        print("LIKED ARE EMBEDDED")
         user_preference_vector = np.mean(embeddings, axis=0).astype('float32')
-        print("user_preference_vector")
 
         # Perform FAISS search
         user_preference_vector = np.expand_dims(user_preference_vector, axis=0)

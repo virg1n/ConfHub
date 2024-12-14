@@ -23,7 +23,7 @@
             <!-- Action Buttons -->
             <div class="d-flex justify-content-between align-items-center">
                 <!-- Download Button -->
-                <a href="{{ url_for('download_file', file_id=file.id) }}" class="btn btn-primary">Download File</a>
+                <a href="{{ url_for('download_file', file_id=file.id) }}" class="btn btn-primary" style="color: white;">Download File</a>
 
                 {% if current_user.get_id() == repo.user_id %}
                     <!-- Delete File Button -->

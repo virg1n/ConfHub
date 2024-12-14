@@ -563,8 +563,6 @@ def profile():
     
     recommended_repo_ids = user['recomended_repo_ids']
     recommended_repos = []
-    print("USER RECOMENDATION")
-    print(recommended_repo_ids)
     try:
         if recommended_repo_ids:
             # Convert the comma-separated string to a list of integers
@@ -590,7 +588,6 @@ def profile():
             random_repositories = recommended_repos
     
     except Exception as e:
-        print("NOTHING")
         random_repositories = []
         print(f"Error fetching recommended repositories: {e}")
 
